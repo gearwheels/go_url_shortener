@@ -85,35 +85,6 @@ func TestURLShortener_getOriginalURL(t *testing.T) {
 	}
 }
 
-// TestMainHandler_MethodNotAllowed тестирует обработку неподдерживаемых методов
-func TestMainHandler_MethodNotAllowed(t *testing.T) {
-	shortener := NewURLShortener()
-
-	tests := []string{
-		http.MethodPut,
-		http.MethodDelete,
-		http.MethodPatch,
-		http.MethodOptions,
-	}
-
-	for _, method := range tests {
-		t.Run(method, func(t *testing.T) {
-			req := httptest.NewRequest(method, "/", nil)
-			rr := httptest.NewRecorder()
-
-			shortener.mainHandler(rr, req)
-
-			if rr.Code != http.StatusMethodNotAllowed {
-				t.Errorf("Expected status %d, got %d", http.StatusMethodNotAllowed, rr.Code)
-			}
-
-			expectedBody := "Method not allowed"
-			if !strings.Contains(rr.Body.String(), expectedBody) {
-				t.Errorf("Expected body to contain %s, got %s", expectedBody, rr.Body.String())
-			}
-		})
-	}
-}
 
 // TestShortenHandler_ContentType тестирует проверку Content-Type
 func TestShortenHandler_ContentType(t *testing.T) {
@@ -351,7 +322,7 @@ func TestMainHandler_Integration(t *testing.T) {
 	req1.Header.Set("Content-Type", "text/plain")
 
 	w := httptest.NewRecorder()
-	shortener.mainHandler(w, req1)
+	shortener.shortenHandler(w, req1)
 	resp1 := w.Result()
 
 	defer resp1.Body.Close()
@@ -373,7 +344,7 @@ func TestMainHandler_Integration(t *testing.T) {
 	req2 := httptest.NewRequest(http.MethodGet, "/"+id, nil)
 
 	w2 := httptest.NewRecorder()
-	shortener.mainHandler(w2, req2)
+	shortener.redirectHandler(w2, req2)
 
 	resp2 := w2.Result()
 
