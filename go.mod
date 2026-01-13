@@ -1,4 +1,4 @@
-module github.com/gearwheels/go_url_shortener.git
+module github.com/gearwheels/go_url_shortener
 
 go 1.24.11
 

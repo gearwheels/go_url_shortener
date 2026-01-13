@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	endpoint := "http://localhost:8080/"
+	endpoint := "http://localhost:8888/"
 	// приглашение в консоли
 	fmt.Println("Введите длинный URL")
 	// открываем потоковое чтение из консоли
