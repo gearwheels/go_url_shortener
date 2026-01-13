@@ -18,12 +18,9 @@ func main() {
 
 	a := flag.String("a", "localhost:8080", "start up address for the server")
 	// пробросить в обработчики чтоб отдавать ответ с адресом b
-	b := flag.String("b", "http://localhost:8000/", "destination folder")
+	b := flag.String("b", "http://localhost:8080/", "destination folder")
 	// разбор командной строки
 	flag.Parse()
-	fmt.Println("Image file:", *a)
-	fmt.Println("Destination folder:", *b)
-	
 	config.Init(*a, *b)
 
 	
