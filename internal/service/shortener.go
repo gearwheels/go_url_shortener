@@ -8,7 +8,7 @@ import (
 )
 
 type URLShortener struct {
-	mu    sync.RWMutex
+	Mu    sync.RWMutex
 	store map[string]string // короткий ID -> оригинальный URL
 }
 
@@ -25,8 +25,8 @@ func (us *URLShortener) generateID() string {
 }
 
 func (us *URLShortener) ShortenURL(originalURL string) string {
-	us.mu.Lock()
-	defer us.mu.Unlock()
+	us.Mu.Lock()
+	defer us.Mu.Unlock()
 
 	// Проверяем, есть ли уже такой URL в хранилище
 	for id, url := range us.store {
@@ -49,11 +49,15 @@ func (us *URLShortener) ShortenURL(originalURL string) string {
 }
 
 func (us *URLShortener) GetOriginalURL(id string) (string, bool) {
-	us.mu.RLock()
-	defer us.mu.RUnlock()
+	us.Mu.RLock()
+	defer us.Mu.RUnlock()
 
 	url, exists := us.store[id]
 	return url, exists
+}
+
+func (us *URLShortener) GetLenStore()(int){
+	return len(us.store)
 }
 
 var Shortener = NewURLShortener()
