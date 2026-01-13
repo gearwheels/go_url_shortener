@@ -3,7 +3,7 @@ package service
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"fmt"
+	"encoding/json"
 	"log"
 	"sync"
 )
@@ -61,8 +61,12 @@ func (us *URLShortener) GetLenStore()(int){
 	return len(us.store)
 }
 
-func (us *URLShortener) PrintStore(){
-	fmt.Println(us.store)
+func (us *URLShortener) PrintStore()([]byte){
+	jsonStr, err := json.Marshal(us.store)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return jsonStr
 }
 
 func (us *URLShortener) FreeStore(){

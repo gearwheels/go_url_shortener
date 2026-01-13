@@ -16,11 +16,14 @@ func Init(serverAddress string, baseURL string) {
     // } else {
     //     fmt.Println("Префикса нет.")
     // }
+	if strings.HasPrefix(serverAddress, "http://") {
+		serverAddress = strings.TrimPrefix(serverAddress, "http://")
+	}else if strings.HasPrefix(serverAddress, "https://"){
+		serverAddress = strings.TrimPrefix(serverAddress, "https://")
+	}
 
-	serverAddress1 := strings.TrimPrefix(serverAddress, "http://")
-	serverAddress1 = strings.TrimPrefix(serverAddress, "https://")
 	AppConfig = &Config{
-		ServerAddress: serverAddress1,
+		ServerAddress: serverAddress,
 		BaseURL:       baseURL,
 	}
 }
