@@ -21,6 +21,9 @@ func Init(serverAddress string, baseURL string) {
 	}else if strings.HasPrefix(serverAddress, "https://"){
 		serverAddress = strings.TrimPrefix(serverAddress, "https://")
 	}
+	if !strings.HasSuffix(baseURL, "/"){
+		baseURL += "/"
+	}
 
 	AppConfig = &Config{
 		ServerAddress: serverAddress,
