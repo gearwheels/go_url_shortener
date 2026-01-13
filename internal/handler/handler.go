@@ -46,12 +46,7 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	id := service.Shortener.ShortenURL(originalURL)
 
-	host := r.Host
-	if host == "" {
-		host = "localhost:8080"
-	}
-	// shortenedURL := fmt.Sprintf("http://%s/%s", host, id)
-	shortenedURL := fmt.Sprintf("%s/%s", config.AppConfig.BaseURL, id)
+	shortenedURL := fmt.Sprintf("%s%s", config.AppConfig.BaseURL, id)
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Location", shortenedURL)

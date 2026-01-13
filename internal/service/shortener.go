@@ -3,6 +3,7 @@ package service
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"log"
 	"sync"
 )
@@ -58,6 +59,14 @@ func (us *URLShortener) GetOriginalURL(id string) (string, bool) {
 
 func (us *URLShortener) GetLenStore()(int){
 	return len(us.store)
+}
+
+func (us *URLShortener) PrintStore(){
+	fmt.Println(us.store)
+}
+
+func (us *URLShortener) FreeStore(){
+	us.store = make(map[string]string)
 }
 
 var Shortener = NewURLShortener()

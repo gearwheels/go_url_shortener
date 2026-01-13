@@ -39,7 +39,7 @@ func TestConcurrentAccess(t *testing.T) {
 		go func(index int) {
 			defer wg.Done()
 			url := fmt.Sprintf("https://example.com/page%d", index)
-			Shortener.ShortenURL(url)
+			shortener.ShortenURL(url)
 		}(i)
 	}
 

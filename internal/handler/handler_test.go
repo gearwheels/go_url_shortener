@@ -1,12 +1,14 @@
 package handler
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/gearwheels/go_url_shortener/internal/config"
 	"github.com/gearwheels/go_url_shortener/internal/service"
 )
 
@@ -22,6 +24,13 @@ func TestShortenHandler_ContentType(t *testing.T) {
 		{"Invalid JSON", "application/json", http.StatusUnsupportedMediaType},
 		{"Invalid form data", "application/x-www-form-urlencoded", http.StatusUnsupportedMediaType},
 		{"Empty", "", http.StatusUnsupportedMediaType},
+	}
+
+	if config.AppConfig == nil {
+		fmt.Println("AppConfig don't init")
+		config.Init("localhost:8888", "http://localhost:8000/")
+	} else {
+		fmt.Println("AppConfig has been init-ed")
 	}
 
 	for _, tt := range tests {
@@ -80,7 +89,7 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 			body := strings.NewReader(tc.input)
 			req := httptest.NewRequest(http.MethodPost, "/", body)
 			req.Header.Set("Content-Type", "text/plain")
-			req.Host = "localhost:8080"
+			req.Host = config.AppConfig.ServerAddress
 
 			rr := httptest.NewRecorder()
 			ShortenHandler(rr, req)
@@ -102,15 +111,15 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 
 			// Проверяем тело ответа
 			responseBody := rr.Body.String()
-			if !strings.HasPrefix(responseBody, "http://localhost:8080/") {
-				t.Errorf("Expected response to start with http://localhost:8080/, got %s", responseBody)
+			if !strings.HasPrefix(responseBody, config.AppConfig.BaseURL) {
+				t.Errorf("Expected response to start with %s, got %s", config.AppConfig.BaseURL, responseBody)
 			}
 
 			// Извлекаем ID из ответа
-			id := strings.TrimPrefix(responseBody, "http://localhost:8080/")
-
+			id := strings.TrimPrefix(responseBody, config.AppConfig.BaseURL)
 			// Проверяем, что URL сохранен правильно
 			storedURL, exists := service.Shortener.GetOriginalURL(id)
+
 			if !exists {
 				t.Error("Expected URL to be stored")
 			}
@@ -125,6 +134,7 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 // TestShortenHandler_DuplicateURL тестирует обработку дублирующихся URL
 func TestShortenHandler_DuplicateURL(t *testing.T) {
 	url := "https://example.com/unique"
+	service.Shortener.FreeStore()
 
 	// Первый запрос
 	body1 := strings.NewReader(url)
