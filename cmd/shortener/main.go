@@ -3,17 +3,16 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/go-chi/chi/v5"
 	"log"
 	"net/http"
+	"github.com/go-chi/chi/v5"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
 )
 
-// var shortener = NewURLShortener()
 
-func main() {
+func main() {// go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.go" -a localhost:8080 -b http://localhost:8080/
 	router := chi.NewRouter()
 
 	a := flag.String("a", "localhost:8080", "start up address for the server")
@@ -23,7 +22,7 @@ func main() {
 	flag.Parse()
 	config.Init(*a, *b)
 
-	
+
 	router.Post("/", handler.ShortenHandler)
 	router.Get("/{id}", handler.RedirectHandler)
 
