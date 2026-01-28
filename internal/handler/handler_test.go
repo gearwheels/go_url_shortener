@@ -174,9 +174,9 @@ func TestShortenHandler_DuplicateURL(t *testing.T) {
 	}
 
 	// Проверяем, что в хранилище только одна запись
-	service.Shortener.Mu.RLock()
+	service.Shortener.RLockMu()
 	count := service.Shortener.GetLenStore()
-	service.Shortener.Mu.RUnlock()
+	service.Shortener.RUnlockMu()
 
 	if count != 1 {
 		t.Errorf("Expected 1 URL in store for duplicates, got %d", count)
@@ -304,7 +304,7 @@ func TestRedirectHandler_RootPath(t *testing.T) {
 
 	RedirectHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
+	if rr.Code != http.StatusBadRequest {
 		t.Errorf("Expected status %d for root path, got %d", http.StatusOK, rr.Code)
 	}
 

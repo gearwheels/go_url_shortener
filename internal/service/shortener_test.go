@@ -46,9 +46,9 @@ func TestConcurrentAccess(t *testing.T) {
 	wg.Wait()
 
 	// Проверяем, что все URL добавлены
-	shortener.Mu.RLock()
+	shortener.RLockMu()
 	count := len(shortener.store)
-	shortener.Mu.RUnlock()
+	shortener.RUnlockMu()
 
 	if count != iterations {
 		t.Errorf("Expected %d URLs in store, got %d", iterations, count)
@@ -94,9 +94,9 @@ func TestURLShortener_ShortenURL(t *testing.T) {
 	}
 
 	// Проверяем, что URL сохранен
-	shortener.Mu.RLock()
+	shortener.RLockMu()
 	storedURL, exists := shortener.store[id1]
-	shortener.Mu.RUnlock()
+	shortener.RUnlockMu()
 
 	if !exists {
 		t.Error("Expected URL to be stored")
@@ -121,9 +121,9 @@ func TestURLShortener_ShortenURL(t *testing.T) {
 	}
 
 	// Тест 4: Проверка уникальности ID
-	shortener.Mu.RLock()
+	shortener.RLockMu()
 	count := len(shortener.store)
-	shortener.Mu.RUnlock()
+	shortener.RUnlockMu()
 
 	if count != 2 {
 		t.Errorf("Expected 2 URLs in store, got %d", count)
