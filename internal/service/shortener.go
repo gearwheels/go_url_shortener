@@ -4,12 +4,12 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"sync"
 )
 
 type URLShortener struct {
-	Mu    sync.RWMutex
+	mu    sync.RWMutex
 	store map[string]string // короткий ID -> оригинальный URL
 }
 
@@ -19,6 +19,14 @@ func NewURLShortener() *URLShortener {
 	}
 }
 
+func (us *URLShortener) RLockMu() {
+	us.mu.RLock()
+}
+
+func (us *URLShortener) RUnlockMu() {
+	us.mu.RUnlock()
+}
+
 func (us *URLShortener) generateID() string {
 	b := make([]byte, 6)
 	rand.Read(b)
@@ -26,8 +34,8 @@ func (us *URLShortener) generateID() string {
 }
 
 func (us *URLShortener) ShortenURL(originalURL string) string {
-	us.Mu.Lock()
-	defer us.Mu.Unlock()
+	us.mu.Lock()
+	defer us.mu.Unlock()
 
 	// Проверяем, есть ли уже такой URL в хранилище
 	for id, url := range us.store {
@@ -45,13 +53,13 @@ func (us *URLShortener) ShortenURL(originalURL string) string {
 	}
 	// Сохраняем в хранилище
 	us.store[id] = originalURL
-	log.Printf("Shortened URL: %s -> %s", id, originalURL)
+	slog.Info("Shortened URL: %s -> %s", id, originalURL)
 	return id
 }
 
 func (us *URLShortener) GetOriginalURL(id string) (string, bool) {
-	us.Mu.RLock()
-	defer us.Mu.RUnlock()
+	us.mu.RLock()
+	defer us.mu.RUnlock()
 
 	url, exists := us.store[id]
 	return url, exists
@@ -64,7 +72,7 @@ func (us *URLShortener) GetLenStore()(int){
 func (us *URLShortener) PrintStore()([]byte){
 	jsonStr, err := json.Marshal(us.store)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error(err.Error())
 	}
 	return jsonStr
 }

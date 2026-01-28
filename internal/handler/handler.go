@@ -3,7 +3,7 @@ package handler
 import (
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -54,7 +54,7 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprint(w, shortenedURL)
 
-	log.Printf("Created short URL: %s for %s", shortenedURL, originalURL)
+	slog.Info("Created short URL: %s for %s", shortenedURL, originalURL)
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +63,8 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/")
 
 	if id == "" {
-		fmt.Fprint(w, "Send POST request with URL in body as text/plain to shorten URL")
+		// fmt.Fprint(w, "Send POST request with URL in body as text/plain to shorten URL")
+		http.Error(w, "Send POST request with URL in body as text/plain to shorten URL", http.StatusBadRequest)
 		return
 	}
 
@@ -76,5 +77,5 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Location", originalURL)
 	w.WriteHeader(http.StatusTemporaryRedirect)
 
-	log.Printf("Redirecting %s -> %s", id, originalURL)
+	slog.Info("Redirecting %s -> %s", id, originalURL)
 }

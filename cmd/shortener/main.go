@@ -3,9 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/go-chi/chi/v5"
-	"log"
+	"log/slog"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
@@ -39,6 +40,7 @@ func main() {
 	fmt.Println("    Response: 307 with Location header")
 
 	if err := http.ListenAndServe(*a, router); err != nil {
-		log.Fatal("Server error:", err)
+		slog.Error("Server error:", slog.String("err", err.Error()))
+		
 	}
 }
