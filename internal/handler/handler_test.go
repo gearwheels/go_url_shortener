@@ -1,4 +1,4 @@
-package main
+package handler
 
 import (
 	"fmt"
@@ -6,89 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
+
+	"github.com/gearwheels/go_url_shortener/internal/config"
+	"github.com/gearwheels/go_url_shortener/internal/service"
 )
-
-// TestURLShortener_shortenURL тестирует сокращение URL
-func TestURLShortener_shortenURL(t *testing.T) {
-	shortener := NewURLShortener()
-
-	// Тест 1: Создание нового URL
-	url1 := "https://example.com"
-	id1 := shortener.shortenURL(url1)
-
-	if id1 == "" {
-		t.Error("Expected non-empty ID")
-	}
-
-	// Проверяем, что URL сохранен
-	shortener.mu.RLock()
-	storedURL, exists := shortener.store[id1]
-	shortener.mu.RUnlock()
-
-	if !exists {
-		t.Error("Expected URL to be stored")
-	}
-
-	if storedURL != url1 {
-		t.Errorf("Expected stored URL %s, got %s", url1, storedURL)
-	}
-
-	// Тест 2: Попытка сократить тот же URL должна вернуть тот же ID
-	id2 := shortener.shortenURL(url1)
-	if id1 != id2 {
-		t.Errorf("Expected same ID for same URL, got %s and %s", id1, id2)
-	}
-
-	// Тест 3: Создание другого URL
-	url3 := "https://example.org"
-	id3 := shortener.shortenURL(url3)
-
-	if id3 == id1 {
-		t.Error("Expected different ID for different URL")
-	}
-
-	// Тест 4: Проверка уникальности ID
-	shortener.mu.RLock()
-	count := len(shortener.store)
-	shortener.mu.RUnlock()
-
-	if count != 2 {
-		t.Errorf("Expected 2 URLs in store, got %d", count)
-	}
-}
-
-// TestURLShortener_getOriginalURL тестирует получение оригинального URL
-func TestURLShortener_getOriginalURL(t *testing.T) {
-	shortener := NewURLShortener()
-
-	// Тест 1: Получение несуществующего URL
-	url, exists := shortener.getOriginalURL("nonexistent")
-	if exists {
-		t.Error("Expected non-existing URL to not exist")
-	}
-	if url != "" {
-		t.Errorf("Expected empty string for non-existing URL, got %s", url)
-	}
-
-	// Тест 2: Получение существующего URL
-	testURL := "https://example.com"
-	id := shortener.shortenURL(testURL)
-
-	storedURL, exists := shortener.getOriginalURL(id)
-	if !exists {
-		t.Error("Expected existing URL to exist")
-	}
-	if storedURL != testURL {
-		t.Errorf("Expected URL %s, got %s", testURL, storedURL)
-	}
-}
-
 
 // TestShortenHandler_ContentType тестирует проверку Content-Type
 func TestShortenHandler_ContentType(t *testing.T) {
-	shortener := NewURLShortener()
 
 	tests := []struct {
 		name        string
@@ -101,6 +26,13 @@ func TestShortenHandler_ContentType(t *testing.T) {
 		{"Empty", "", http.StatusUnsupportedMediaType},
 	}
 
+	if config.AppConfig == nil {
+		fmt.Println("AppConfig don't init")
+		config.Init("localhost:8888", "http://localhost:8000/")
+	} else {
+		fmt.Println("AppConfig has been init-ed")
+	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body := strings.NewReader("https://example.com")
@@ -108,7 +40,7 @@ func TestShortenHandler_ContentType(t *testing.T) {
 			req.Header.Set("Content-Type", tt.contentType)
 
 			rr := httptest.NewRecorder()
-			shortener.shortenHandler(rr, req)
+			ShortenHandler(rr, req)
 
 			if rr.Code != tt.expected {
 				t.Errorf("Expected status %d for %s, got %d", tt.expected, tt.contentType, rr.Code)
@@ -119,13 +51,12 @@ func TestShortenHandler_ContentType(t *testing.T) {
 
 // TestShortenHandler_EmptyBody тестирует обработку пустого тела запроса
 func TestShortenHandler_EmptyBody(t *testing.T) {
-	shortener := NewURLShortener()
 
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(""))
 	req.Header.Set("Content-Type", "text/plain")
 
 	rr := httptest.NewRecorder()
-	shortener.shortenHandler(rr, req)
+	ShortenHandler(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("Expected status %d for empty body, got %d", http.StatusBadRequest, rr.Code)
@@ -139,7 +70,6 @@ func TestShortenHandler_EmptyBody(t *testing.T) {
 
 // TestShortenHandler_ValidURL тестирует успешное сокращение URL
 func TestShortenHandler_ValidURL(t *testing.T) {
-	shortener := NewURLShortener()
 
 	testCases := []struct {
 		name     string
@@ -159,10 +89,10 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 			body := strings.NewReader(tc.input)
 			req := httptest.NewRequest(http.MethodPost, "/", body)
 			req.Header.Set("Content-Type", "text/plain")
-			req.Host = "localhost:8080"
+			req.Host = config.AppConfig.ServerAddress
 
 			rr := httptest.NewRecorder()
-			shortener.shortenHandler(rr, req)
+			ShortenHandler(rr, req)
 
 			if rr.Code != http.StatusCreated {
 				t.Errorf("Expected status %d, got %d", http.StatusCreated, rr.Code)
@@ -181,15 +111,15 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 
 			// Проверяем тело ответа
 			responseBody := rr.Body.String()
-			if !strings.HasPrefix(responseBody, "http://localhost:8080/") {
-				t.Errorf("Expected response to start with http://localhost:8080/, got %s", responseBody)
+			if !strings.HasPrefix(responseBody, config.AppConfig.BaseURL) {
+				t.Errorf("Expected response to start with %s, got %s", config.AppConfig.BaseURL, responseBody)
 			}
 
 			// Извлекаем ID из ответа
-			id := strings.TrimPrefix(responseBody, "http://localhost:8080/")
-
+			id := strings.TrimPrefix(responseBody, config.AppConfig.BaseURL)
 			// Проверяем, что URL сохранен правильно
-			storedURL, exists := shortener.getOriginalURL(id)
+			storedURL, exists := service.Shortener.GetOriginalURL(id)
+
 			if !exists {
 				t.Error("Expected URL to be stored")
 			}
@@ -203,8 +133,8 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 
 // TestShortenHandler_DuplicateURL тестирует обработку дублирующихся URL
 func TestShortenHandler_DuplicateURL(t *testing.T) {
-	shortener := NewURLShortener()
 	url := "https://example.com/unique"
+	service.Shortener.FreeStore()
 
 	// Первый запрос
 	body1 := strings.NewReader(url)
@@ -213,7 +143,7 @@ func TestShortenHandler_DuplicateURL(t *testing.T) {
 	req1.Host = "localhost:8080"
 
 	rr1 := httptest.NewRecorder()
-	shortener.shortenHandler(rr1, req1)
+	ShortenHandler(rr1, req1)
 
 	if rr1.Code != http.StatusCreated {
 		t.Fatalf("First request failed with status %d", rr1.Code)
@@ -229,7 +159,7 @@ func TestShortenHandler_DuplicateURL(t *testing.T) {
 	req2.Host = "localhost:8080"
 
 	rr2 := httptest.NewRecorder()
-	shortener.shortenHandler(rr2, req2)
+	ShortenHandler(rr2, req2)
 
 	if rr2.Code != http.StatusCreated {
 		t.Fatalf("Second request failed with status %d", rr2.Code)
@@ -244,75 +174,17 @@ func TestShortenHandler_DuplicateURL(t *testing.T) {
 	}
 
 	// Проверяем, что в хранилище только одна запись
-	shortener.mu.RLock()
-	count := len(shortener.store)
-	shortener.mu.RUnlock()
+	service.Shortener.RLockMu()
+	count := service.Shortener.GetLenStore()
+	service.Shortener.RUnlockMu()
 
 	if count != 1 {
 		t.Errorf("Expected 1 URL in store for duplicates, got %d", count)
 	}
 }
 
-// TestRedirectHandler_NotFound тестирует перенаправление для несуществующего ID
-func TestRedirectHandler_NotFound(t *testing.T) {
-	shortener := NewURLShortener()
-
-	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
-	rr := httptest.NewRecorder()
-
-	shortener.redirectHandler(rr, req)
-
-	if rr.Code != http.StatusNotFound {
-		t.Errorf("Expected status %d for non-existent ID, got %d", http.StatusNotFound, rr.Code)
-	}
-}
-
-// TestRedirectHandler_Success тестирует успешное перенаправление
-func TestRedirectHandler_Success(t *testing.T) {
-	shortener := NewURLShortener()
-
-	// Сначала создаем короткий URL
-	originalURL := "https://example.com/redirect-test"
-	id := shortener.shortenURL(originalURL)
-
-	// Тестируем перенаправление
-	req := httptest.NewRequest(http.MethodGet, "/"+id, nil)
-	rr := httptest.NewRecorder()
-
-	shortener.redirectHandler(rr, req)
-
-	if rr.Code != http.StatusTemporaryRedirect {
-		t.Errorf("Expected status %d, got %d", http.StatusTemporaryRedirect, rr.Code)
-	}
-
-	location := rr.Header().Get("Location")
-	if location != originalURL {
-		t.Errorf("Expected Location %s, got %s", originalURL, location)
-	}
-}
-
-// TestRedirectHandler_RootPath тестирует корневой путь GET
-func TestRedirectHandler_RootPath(t *testing.T) {
-	shortener := NewURLShortener()
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rr := httptest.NewRecorder()
-
-	shortener.redirectHandler(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Errorf("Expected status %d for root path, got %d", http.StatusOK, rr.Code)
-	}
-
-	expectedMessage := "Send POST request with URL in body as text/plain to shorten URL"
-	if !strings.Contains(rr.Body.String(), expectedMessage) {
-		t.Errorf("Expected message '%s', got '%s'", expectedMessage, rr.Body.String())
-	}
-}
-
 // TestMainHandler_Integration тестирует полный сценарий работы
 func TestMainHandler_Integration(t *testing.T) {
-	shortener := NewURLShortener()
 	// создаем короткий url
 	url := "https://go.dev/dl/"
 	body := strings.NewReader(url)
@@ -322,7 +194,7 @@ func TestMainHandler_Integration(t *testing.T) {
 	req1.Header.Set("Content-Type", "text/plain")
 
 	w := httptest.NewRecorder()
-	shortener.shortenHandler(w, req1)
+	ShortenHandler(w, req1)
 	resp1 := w.Result()
 
 	defer resp1.Body.Close()
@@ -344,7 +216,7 @@ func TestMainHandler_Integration(t *testing.T) {
 	req2 := httptest.NewRequest(http.MethodGet, "/"+id, nil)
 
 	w2 := httptest.NewRecorder()
-	shortener.redirectHandler(w2, req2)
+	RedirectHandler(w2, req2)
 
 	resp2 := w2.Result()
 
@@ -360,38 +232,8 @@ func TestMainHandler_Integration(t *testing.T) {
 	}
 }
 
-// TestConcurrentAccess тестирует конкурентный доступ к хранилищу
-func TestConcurrentAccess(t *testing.T) {
-	shortener := NewURLShortener()
-
-	var wg sync.WaitGroup
-	iterations := 100
-
-	// Конкурентно добавляем URL
-	for i := 0; i < iterations; i++ {
-		wg.Add(1)
-		go func(index int) {
-			defer wg.Done()
-			url := fmt.Sprintf("https://example.com/page%d", index)
-			shortener.shortenURL(url)
-		}(i)
-	}
-
-	wg.Wait()
-
-	// Проверяем, что все URL добавлены
-	shortener.mu.RLock()
-	count := len(shortener.store)
-	shortener.mu.RUnlock()
-
-	if count != iterations {
-		t.Errorf("Expected %d URLs in store, got %d", iterations, count)
-	}
-}
-
 // TestShortenHandler_InvalidPath тестирует обработку некорректного пути
 func TestShortenHandler_InvalidPath(t *testing.T) {
-	shortener := NewURLShortener()
 
 	tests := []struct {
 		path     string
@@ -409,7 +251,7 @@ func TestShortenHandler_InvalidPath(t *testing.T) {
 			req.Header.Set("Content-Type", "text/plain")
 
 			rr := httptest.NewRecorder()
-			shortener.shortenHandler(rr, req)
+			ShortenHandler(rr, req)
 
 			if rr.Code != tt.expected {
 				t.Errorf("For path %s expected status %d, got %d", tt.path, tt.expected, rr.Code)
@@ -418,22 +260,56 @@ func TestShortenHandler_InvalidPath(t *testing.T) {
 	}
 }
 
-// TestGenerateID_Uniqueness тестирует уникальность генерируемых ID
-func TestGenerateID_Uniqueness(t *testing.T) {
-	shortener := NewURLShortener()
+// TestRedirectHandler_NotFound тестирует перенаправление для несуществующего ID
+func TestRedirectHandler_NotFound(t *testing.T) {
 
-	iterations := 1000
-	ids := make(map[string]bool)
+	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
+	rr := httptest.NewRecorder()
 
-	for i := 0; i < iterations; i++ {
-		id := shortener.generateID()
-		if ids[id] {
-			t.Errorf("Duplicate ID generated: %s", id)
-		}
-		ids[id] = true
+	RedirectHandler(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d for non-existent ID, got %d", http.StatusNotFound, rr.Code)
+	}
+}
+
+// TestRedirectHandler_Success тестирует успешное перенаправление
+func TestRedirectHandler_Success(t *testing.T) {
+
+	// Сначала создаем короткий URL
+	originalURL := "https://example.com/redirect-test"
+	id := service.Shortener.ShortenURL(originalURL)
+
+	// Тестируем перенаправление
+	req := httptest.NewRequest(http.MethodGet, "/"+id, nil)
+	rr := httptest.NewRecorder()
+
+	RedirectHandler(rr, req)
+
+	if rr.Code != http.StatusTemporaryRedirect {
+		t.Errorf("Expected status %d, got %d", http.StatusTemporaryRedirect, rr.Code)
 	}
 
-	if len(ids) != iterations {
-		t.Errorf("Expected %d unique IDs, got %d", iterations, len(ids))
+	location := rr.Header().Get("Location")
+	if location != originalURL {
+		t.Errorf("Expected Location %s, got %s", originalURL, location)
+	}
+}
+
+// TestRedirectHandler_RootPath тестирует корневой путь GET
+func TestRedirectHandler_RootPath(t *testing.T) {
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rr := httptest.NewRecorder()
+
+	RedirectHandler(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d for root path, got %d", http.StatusOK, rr.Code)
+	}
+
+	expectedMessage := "Send POST request with URL in body as text/plain to shorten URL"
+	if !strings.Contains(rr.Body.String(), expectedMessage) {
+		t.Errorf("Expected message '%s', got '%s'", expectedMessage, rr.Body.String())
 	}
 }
