@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"github.com/go-chi/chi/v5"
 )
 
 type URLShortener struct {
@@ -132,21 +133,13 @@ func (us *URLShortener) redirectHandler(w http.ResponseWriter, r *http.Request) 
 	log.Printf("Redirecting %s -> %s", id, originalURL)
 }
 
-func (us *URLShortener) mainHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodPost:
-		us.shortenHandler(w, r)
-	case http.MethodGet:
-		us.redirectHandler(w, r)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
+var shortener = NewURLShortener()
 
 func main() {
-	shortener := NewURLShortener()
+	router := chi.NewRouter()
 
-	http.HandleFunc("/", shortener.mainHandler)
+	router.Post("/", shortener.shortenHandler)
+    router.Get("/{id}", shortener.redirectHandler)
 
 	port := ":8080"
 	fmt.Printf("URL Shortener server starting on http://localhost%s\n", port)
@@ -159,7 +152,7 @@ func main() {
 	fmt.Println("  GET /{id} - Redirect to original URL")
 	fmt.Println("    Response: 307 with Location header")
 
-	if err := http.ListenAndServe(port, nil); err != nil {
+	if err := http.ListenAndServe(port, router); err != nil {
 		log.Fatal("Server error:", err)
 	}
 }
