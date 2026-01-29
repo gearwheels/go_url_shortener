@@ -1,4 +1,4 @@
-package log_request
+package logRequest
 
 import (
 	"log/slog"
