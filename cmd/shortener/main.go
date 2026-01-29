@@ -5,40 +5,16 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
-	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
-	"github.com/gearwheels/go_url_shortener/internal/middleware"
 )
 
 
 func main() {// go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.go" -a localhost:8080 -b http://localhost:8080/
 	router := chi.NewRouter()
-	router.Use(middleware.RequestID) // Добавляет ID каждому запросу
-    router.Use(middleware.RealIP)    // Получает реальный IP
-    router.Use(middleware.Recoverer) // Обработка паник
-    router.Use(middleware.Timeout(60 * time.Second)) // Таймаут
-
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-        Level: slog.LevelDebug,
-        ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-            // Кастомизация формата времени
-            if a.Key == slog.TimeKey {
-                return slog.Attr{
-                    Key:   "timestamp",
-                    Value: slog.StringValue(a.Value.Time().Format(time.RFC3339)),
-                }
-            }
-            return a
-        },
-    }))
-    
-    slog.SetDefault(logger)
 
 	a := flag.String("a", "localhost:8080", "start up address for the server")
 	// пробросить в обработчики чтоб отдавать ответ с адресом b
@@ -47,8 +23,7 @@ func main() {// go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.g
 	flag.Parse()
 	config.Init(*a, *b)
 
-	// Наш middleware для логирования
-	router.Use(log_request.RequestLogger(logger))
+
 	router.Post("/", handler.ShortenHandler)
 	router.Get("/{id}", handler.RedirectHandler)
 
