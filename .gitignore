@@ -22,4 +22,6 @@ vendor/
 .idea
 .vscode
 
+
+# environment 
 .env
