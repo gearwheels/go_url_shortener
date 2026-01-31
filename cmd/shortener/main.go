@@ -13,7 +13,7 @@ import (
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
-	"github.com/gearwheels/go_url_shortener/internal/middleware"
+	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
 )
 
 func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.go" -a localhost:8080 -b http://localhost:8080/
@@ -49,7 +49,7 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	// Наш middleware для логирования
 	router.Use(logrequest.RequestLogger(logger))
 	router.Post("/", handler.ShortenHandler)
-	router.Post("/api/shorten", handler.JsonShortenHandler)
+	router.Post("/api/shorten", handler.JSONShortenHandler)
 	router.Get("/{id}", handler.RedirectHandler)
 
 	// port := ":8080"

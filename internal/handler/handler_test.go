@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
+	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	"github.com/gearwheels/go_url_shortener/internal/service"
-	schemasShortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 )
 
 // TestShortenHandler_ContentType тестирует проверку Content-Type
@@ -316,18 +316,18 @@ func TestRedirectHandler_RootPath(t *testing.T) {
 	}
 }
 
-// --- JsonShortenHandler tests ---
+// --- JSONShortenHandler tests ---
 
-func initConfigForJsonTests(t *testing.T) {
-	t.Helper()
-	if config.AppConfig == nil {
-		config.Init("localhost:8888", "http://localhost:8000/")
-	}
-}
+// func initConfigForJsonTests(t *testing.T) {
+// 	t.Helper()
+// 	if config.AppConfig == nil {
+// 		config.Init("localhost:8888", "http://localhost:8000/")
+// 	}
+// }
 
-// TestJsonShortenHandler_ContentType тестирует проверку Content-Type для JSON handler
-func TestJsonShortenHandler_ContentType(t *testing.T) {
-	initConfigForJsonTests(t)
+// TestJSONShortenHandler_ContentType тестирует проверку Content-Type для JSON handler
+func TestJSONShortenHandler_ContentType(t *testing.T) {
+	// initConfigForJsonTests(t)
 
 	tests := []struct {
 		name        string
@@ -347,7 +347,7 @@ func TestJsonShortenHandler_ContentType(t *testing.T) {
 			req.Header.Set("Content-Type", tt.contentType)
 
 			rr := httptest.NewRecorder()
-			JsonShortenHandler(rr, req)
+			JSONShortenHandler(rr, req)
 
 			if rr.Code != tt.expected {
 				t.Errorf("Expected status %d for Content-Type %q, got %d", tt.expected, tt.contentType, rr.Code)
@@ -356,9 +356,9 @@ func TestJsonShortenHandler_ContentType(t *testing.T) {
 	}
 }
 
-// TestJsonShortenHandler_InvalidJSON тестирует обработку невалидного JSON
-func TestJsonShortenHandler_InvalidJSON(t *testing.T) {
-	initConfigForJsonTests(t)
+// TestJSONShortenHandler_InvalidJSON тестирует обработку невалидного JSON
+func TestJSONShortenHandler_InvalidJSON(t *testing.T) {
+	// initConfigForJsonTests(t)
 
 	tests := []struct {
 		name string
@@ -375,7 +375,7 @@ func TestJsonShortenHandler_InvalidJSON(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 
 			rr := httptest.NewRecorder()
-			JsonShortenHandler(rr, req)
+			JSONShortenHandler(rr, req)
 
 			if rr.Code != http.StatusBadRequest {
 				t.Errorf("Expected status %d for invalid JSON, got %d", http.StatusBadRequest, rr.Code)
@@ -384,16 +384,16 @@ func TestJsonShortenHandler_InvalidJSON(t *testing.T) {
 	}
 }
 
-// TestJsonShortenHandler_EmptyURL тестирует обработку пустого URL в JSON
-func TestJsonShortenHandler_EmptyURL(t *testing.T) {
-	initConfigForJsonTests(t)
+// TestJSONShortenHandler_EmptyURL тестирует обработку пустого URL в JSON
+func TestJSONShortenHandler_EmptyURL(t *testing.T) {
+	// initConfigForJsonTests(t)
 
 	body := `{"url":""}`
 	req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
-	JsonShortenHandler(rr, req)
+	JSONShortenHandler(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("Expected status %d for empty URL, got %d", http.StatusBadRequest, rr.Code)
@@ -404,9 +404,9 @@ func TestJsonShortenHandler_EmptyURL(t *testing.T) {
 	}
 }
 
-// TestJsonShortenHandler_ValidURL тестирует успешное сокращение URL через JSON API
-func TestJsonShortenHandler_ValidURL(t *testing.T) {
-	initConfigForJsonTests(t)
+// TestJSONShortenHandler_ValidURL тестирует успешное сокращение URL через JSON API
+func TestJSONShortenHandler_ValidURL(t *testing.T) {
+	// initConfigForJsonTests(t)
 
 	testCases := []struct {
 		name     string
@@ -428,7 +428,7 @@ func TestJsonShortenHandler_ValidURL(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 
 			rr := httptest.NewRecorder()
-			JsonShortenHandler(rr, req)
+			JSONShortenHandler(rr, req)
 
 			if rr.Code != http.StatusCreated {
 				t.Errorf("Expected status %d, got %d. Body: %s", http.StatusCreated, rr.Code, rr.Body.String())
@@ -439,7 +439,7 @@ func TestJsonShortenHandler_ValidURL(t *testing.T) {
 				t.Errorf("Expected Content-Type application/json, got %s", contentType)
 			}
 
-			var resp schemasShortener.ResponseSchema
+			var resp schemasshortener.ResponseSchema
 			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 				t.Fatalf("Failed to unmarshal response: %v", err)
 			}
@@ -463,22 +463,22 @@ func TestJsonShortenHandler_ValidURL(t *testing.T) {
 	}
 }
 
-// TestJsonShortenHandler_ResponseFormat тестирует формат JSON-ответа
-func TestJsonShortenHandler_ResponseFormat(t *testing.T) {
-	initConfigForJsonTests(t)
+// TestJSONShortenHandler_ResponseFormat тестирует формат JSON-ответа
+func TestJSONShortenHandler_ResponseFormat(t *testing.T) {
+	// initConfigForJsonTests(t)
 
 	body := `{"url":"https://go.dev/"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
-	JsonShortenHandler(rr, req)
+	JSONShortenHandler(rr, req)
 
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("Expected status %d, got %d", http.StatusCreated, rr.Code)
 	}
 
-	var resp schemasShortener.ResponseSchema
+	var resp schemasshortener.ResponseSchema
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("Response is not valid JSON: %v", err)
 	}
