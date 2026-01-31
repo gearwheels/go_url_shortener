@@ -1,7 +1,7 @@
-package schemasShortener
+package schemasshortener
 
 type RequestSchema struct {
-	Url string `json:"url"`
+	URL string `json:"url"`
 }
 
 type ResponseSchema struct {
