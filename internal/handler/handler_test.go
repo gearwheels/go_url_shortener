@@ -316,18 +316,8 @@ func TestRedirectHandler_RootPath(t *testing.T) {
 	}
 }
 
-// --- JSONShortenHandler tests ---
-
-// func initConfigForJsonTests(t *testing.T) {
-// 	t.Helper()
-// 	if config.AppConfig == nil {
-// 		config.Init("localhost:8888", "http://localhost:8000/")
-// 	}
-// }
-
 // TestJSONShortenHandler_ContentType тестирует проверку Content-Type для JSON handler
 func TestJSONShortenHandler_ContentType(t *testing.T) {
-	// initConfigForJsonTests(t)
 
 	tests := []struct {
 		name        string
@@ -358,7 +348,6 @@ func TestJSONShortenHandler_ContentType(t *testing.T) {
 
 // TestJSONShortenHandler_InvalidJSON тестирует обработку невалидного JSON
 func TestJSONShortenHandler_InvalidJSON(t *testing.T) {
-	// initConfigForJsonTests(t)
 
 	tests := []struct {
 		name string
@@ -386,7 +375,6 @@ func TestJSONShortenHandler_InvalidJSON(t *testing.T) {
 
 // TestJSONShortenHandler_EmptyURL тестирует обработку пустого URL в JSON
 func TestJSONShortenHandler_EmptyURL(t *testing.T) {
-	// initConfigForJsonTests(t)
 
 	body := `{"url":""}`
 	req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
@@ -406,7 +394,6 @@ func TestJSONShortenHandler_EmptyURL(t *testing.T) {
 
 // TestJSONShortenHandler_ValidURL тестирует успешное сокращение URL через JSON API
 func TestJSONShortenHandler_ValidURL(t *testing.T) {
-	// initConfigForJsonTests(t)
 
 	testCases := []struct {
 		name     string
@@ -465,7 +452,6 @@ func TestJSONShortenHandler_ValidURL(t *testing.T) {
 
 // TestJSONShortenHandler_ResponseFormat тестирует формат JSON-ответа
 func TestJSONShortenHandler_ResponseFormat(t *testing.T) {
-	// initConfigForJsonTests(t)
 
 	body := `{"url":"https://go.dev/"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))

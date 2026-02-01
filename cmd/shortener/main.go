@@ -48,6 +48,7 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 
 	// Наш middleware для логирования
 	router.Use(logrequest.RequestLogger(logger))
+	router.Use(logrequest.RequestDataZip())
 	router.Post("/", handler.ShortenHandler)
 	router.Post("/api/shorten", handler.JSONShortenHandler)
 	router.Get("/{id}", handler.RedirectHandler)
