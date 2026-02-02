@@ -10,12 +10,12 @@ import (
 type Config struct {
 	ServerAddress string `env:"SERVERADDRESS"` // Адрес сервера
 	BaseURL       string `env:"BASEURL"`       // Базовый URL для коротких ссылок
-	PathStoreUrl  string `env:"FILE_STORAGE_PATH"`
+	PathStoreURL  string `env:"FILE_STORAGE_PATH"`
 }
 
 var AppConfig *Config
 
-func Init(serverAddress string, baseURL string, pathToStoreUrl string) {
+func Init(serverAddress string, baseURL string, pathToStoreURL string) {
 
 	cfg := &Config{}
 	if err := env.Parse(cfg); err != nil {
@@ -36,13 +36,13 @@ func Init(serverAddress string, baseURL string, pathToStoreUrl string) {
 		cfg.BaseURL = baseURL
 	}
 
-	if cfg.PathStoreUrl == "" {
-		cfg.PathStoreUrl = pathToStoreUrl
+	if cfg.PathStoreURL == "" {
+		cfg.PathStoreURL = pathToStoreURL
 	}
 
 	AppConfig = &Config{
 		ServerAddress: cfg.ServerAddress,
 		BaseURL:       cfg.BaseURL,
-		PathStoreUrl:  cfg.PathStoreUrl,
+		PathStoreURL:  cfg.PathStoreURL,
 	}
 }

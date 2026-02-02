@@ -90,14 +90,14 @@ func (us *URLShortener) FreeStore() {
 }
 
 func (us *URLShortener) UpdateFile(data string) error {
-	file, err := os.OpenFile(config.AppConfig.PathStoreUrl, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	file, err := os.OpenFile(config.AppConfig.PathStoreURL, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		panic(err)
 		// return nil, err
 	}
 	defer file.Close()
 
-	info, err := os.Stat(config.AppConfig.PathStoreUrl)
+	info, err := os.Stat(config.AppConfig.PathStoreURL)
 	if err != nil {
 		slog.Error("Ошибка: " + err.Error() + "\n")
 		panic(err)
@@ -122,7 +122,7 @@ func (us *URLShortener) UpdateFile(data string) error {
 }
 
 func (us *URLShortener) ExtractFromFile() error {
-	file, err := os.OpenFile(config.AppConfig.PathStoreUrl, os.O_RDONLY|os.O_CREATE, 0666)
+	file, err := os.OpenFile(config.AppConfig.PathStoreURL, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
 		panic(err)
 		// return nil, err
