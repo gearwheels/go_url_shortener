@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -22,11 +23,22 @@ import (
 	schemasShortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 )
 
+// testStoragePath — путь к временному файлу хранилища для тестов (не зависит от CWD)
+var testStoragePath string
+
+func init() {
+	dir, err := os.MkdirTemp("", "shortener_handler_test")
+	if err != nil {
+		panic(err)
+	}
+	testStoragePath = filepath.Join(dir, "store_url.txt")
+}
+
 // newTestRouter возвращает роутер с той же цепочкой middleware, что и в main
 func newTestRouter(t *testing.T) http.Handler {
 	t.Helper()
 	if config.AppConfig == nil {
-		config.Init("localhost:8888", "http://localhost:8000/", "./storage/store_url.txt")
+		config.Init("localhost:8888", "http://localhost:8000/", testStoragePath)
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{

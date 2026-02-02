@@ -2,9 +2,23 @@ package service
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/gearwheels/go_url_shortener/internal/config"
 )
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "shortener_svc_test")
+	if err != nil {
+		panic(err)
+	}
+	path := filepath.Join(dir, "store_url.txt")
+	config.Init("localhost:8888", "http://localhost:8000/", path)
+	os.Exit(m.Run())
+}
 
 // TestGenerateID_Uniqueness тестирует уникальность генерируемых ID
 func TestGenerateID_Uniqueness(t *testing.T) {
