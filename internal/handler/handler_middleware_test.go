@@ -26,7 +26,7 @@ import (
 func newTestRouter(t *testing.T) http.Handler {
 	t.Helper()
 	if config.AppConfig == nil {
-		config.Init("localhost:8888", "http://localhost:8000/")
+		config.Init("localhost:8888", "http://localhost:8000/", "./storage/store_url.txt")
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
