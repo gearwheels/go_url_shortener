@@ -90,7 +90,7 @@ func (us *URLShortener) FreeStore() {
 }
 
 func (us *URLShortener) UpdateFile(data string) error {
-	file, err := os.OpenFile(config.AppConfig.PathStoreUrl, os.O_RDONLY|os.O_CREATE|os.O_APPEND, 0666)
+	file, err := os.OpenFile(config.AppConfig.PathStoreUrl, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		panic(err)
 		// return nil, err
@@ -147,8 +147,8 @@ func (us *URLShortener) ExtractFromFile() error {
 
 	if len(content.String()) != 0 {
 		us.FreeStore()
-		json_str := "{" + content.String() + "}"
-		err = json.Unmarshal([]byte(json_str), &us.store)
+		jsonStr := "{" + content.String() + "}"
+		err = json.Unmarshal([]byte(jsonStr), &us.store)
 		if err != nil {
 			return err
 		}
