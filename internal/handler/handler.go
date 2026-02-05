@@ -108,7 +108,6 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	w.Write(resp)
-	// fmt.Fprint(w, shortenedURL)
 
 	slog.Info("Created short URL: %s for %s", shortenedURL, request.URL)
 }

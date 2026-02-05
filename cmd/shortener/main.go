@@ -14,6 +14,7 @@ import (
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
+	service "github.com/gearwheels/go_url_shortener/internal/service"
 )
 
 func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.go" -a localhost:8080 -b http://localhost:8080/
@@ -41,16 +42,20 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 
 	a := flag.String("a", "localhost:8080", "start up address for the server")
 	// пробросить в обработчики чтоб отдавать ответ с адресом b
-	b := flag.String("b", "http://localhost:8080/", "destination folder")
+	b := flag.String("b", "http://localhost:8080/", "destination address")
+	f := flag.String("f", "./storage/store_url.txt", "destination file")
 	// разбор командной строки
 	flag.Parse()
-	config.Init(*a, *b)
+	config.Init(*a, *b, *f)
 
 	// Наш middleware для логирования
 	router.Use(logrequest.RequestLogger(logger))
+	router.Use(logrequest.RequestDataZip())
 	router.Post("/", handler.ShortenHandler)
 	router.Post("/api/shorten", handler.JSONShortenHandler)
 	router.Get("/{id}", handler.RedirectHandler)
+
+	service.Shortener.ExtractFromFile()
 
 	// port := ":8080"
 	fmt.Printf("URL Shortener server starting on %s\n", *a)
@@ -62,6 +67,7 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	fmt.Println()
 	fmt.Println("  GET /{id} - Redirect to original URL")
 	fmt.Println("    Response: 307 with Location header")
+	fmt.Println(string(service.Shortener.PrintStore()))
 
 	if err := http.ListenAndServe(*a, router); err != nil {
 		slog.Error("Server error:", slog.String("err", err.Error()))
