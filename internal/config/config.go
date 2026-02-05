@@ -1,32 +1,48 @@
 package config
 
-import "strings"
+import (
+	"log"
+	"strings"
+
+	"github.com/caarlos0/env/v6"
+)
 
 type Config struct {
-	ServerAddress string // Адрес сервера
-	BaseURL       string // Базовый URL для коротких ссылок
+	ServerAddress string `env:"SERVERADDRESS"` // Адрес сервера
+	BaseURL       string `env:"BASEURL"`       // Базовый URL для коротких ссылок
+	PathStoreURL  string `env:"FILE_STORAGE_PATH"`
 }
 
 var AppConfig *Config
 
-func Init(serverAddress string, baseURL string) {
+func Init(serverAddress string, baseURL string, pathToStoreURL string) {
 
-	// if strings.HasPrefix(str, prefix) {
-    //     fmt.Println("Строка начинается с префикса.")
-    // } else {
-    //     fmt.Println("Префикса нет.")
-    // }
-	if strings.HasPrefix(serverAddress, "http://") {
-		serverAddress = strings.TrimPrefix(serverAddress, "http://")
-	}else if strings.HasPrefix(serverAddress, "https://"){
-		serverAddress = strings.TrimPrefix(serverAddress, "https://")
+	cfg := &Config{}
+	if err := env.Parse(cfg); err != nil {
+		log.Fatal(err)
 	}
-	if !strings.HasSuffix(baseURL, "/"){
-		baseURL += "/"
+	if cfg.ServerAddress == "" {
+		if strings.HasPrefix(serverAddress, "http://") {
+			serverAddress = strings.TrimPrefix(serverAddress, "http://")
+		} else if strings.HasPrefix(serverAddress, "https://") {
+			serverAddress = strings.TrimPrefix(serverAddress, "https://")
+		}
+		cfg.ServerAddress = serverAddress
+	}
+	if cfg.BaseURL == "" {
+		if !strings.HasSuffix(baseURL, "/") {
+			baseURL += "/"
+		}
+		cfg.BaseURL = baseURL
+	}
+
+	if cfg.PathStoreURL == "" {
+		cfg.PathStoreURL = pathToStoreURL
 	}
 
 	AppConfig = &Config{
-		ServerAddress: serverAddress,
-		BaseURL:       baseURL,
+		ServerAddress: cfg.ServerAddress,
+		BaseURL:       cfg.BaseURL,
+		PathStoreURL:  cfg.PathStoreURL,
 	}
 }

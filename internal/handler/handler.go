@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -8,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
+	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	"github.com/gearwheels/go_url_shortener/internal/service"
 )
 
@@ -55,6 +58,58 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, shortenedURL)
 
 	slog.Info("Created short URL: %s for %s", shortenedURL, originalURL)
+}
+
+func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
+
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		http.Error(w, "Unsupported Media Type. Expected application/json",
+			http.StatusUnsupportedMediaType)
+		return
+	}
+	var buf bytes.Buffer
+	var request schemasshortener.RequestSchema
+	var response schemasshortener.ResponseSchema
+
+	// читаем тело запроса
+	_, err := buf.ReadFrom(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err = json.Unmarshal(buf.Bytes(), &request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if request.URL == "" {
+		http.Error(w, "URL cannot be empty", http.StatusBadRequest)
+		return
+	}
+
+	if !strings.HasPrefix(request.URL, "http://") &&
+		!strings.HasPrefix(request.URL, "https://") {
+		request.URL = "http://" + request.URL
+	}
+
+	id := service.Shortener.ShortenURL(request.URL)
+
+	shortenedURL := fmt.Sprintf("%s%s", config.AppConfig.BaseURL, id)
+	response.Result = shortenedURL
+	resp, err := json.Marshal(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+
+	w.Write(resp)
+
+	slog.Info("Created short URL: %s for %s", shortenedURL, request.URL)
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request) {
