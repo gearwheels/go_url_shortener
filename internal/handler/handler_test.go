@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
+	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	"github.com/gearwheels/go_url_shortener/internal/service"
 )
 
@@ -28,7 +30,7 @@ func TestShortenHandler_ContentType(t *testing.T) {
 
 	if config.AppConfig == nil {
 		fmt.Println("AppConfig don't init")
-		config.Init("localhost:8888", "http://localhost:8000/")
+		config.Init("localhost:8888", "http://localhost:8000/", "./storage/store_url.txt")
 	} else {
 		fmt.Println("AppConfig has been init-ed")
 	}
@@ -311,5 +313,166 @@ func TestRedirectHandler_RootPath(t *testing.T) {
 	expectedMessage := "Send POST request with URL in body as text/plain to shorten URL"
 	if !strings.Contains(rr.Body.String(), expectedMessage) {
 		t.Errorf("Expected message '%s', got '%s'", expectedMessage, rr.Body.String())
+	}
+}
+
+// TestJSONShortenHandler_ContentType тестирует проверку Content-Type для JSON handler
+func TestJSONShortenHandler_ContentType(t *testing.T) {
+
+	tests := []struct {
+		name        string
+		contentType string
+		expected    int
+	}{
+		{"Valid JSON", "application/json", http.StatusCreated},
+		{"Invalid plain text", "text/plain", http.StatusUnsupportedMediaType},
+		{"Invalid form data", "application/x-www-form-urlencoded", http.StatusUnsupportedMediaType},
+		{"Empty", "", http.StatusUnsupportedMediaType},
+	}
+
+	body := `{"url":"https://example.com"}`
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
+			req.Header.Set("Content-Type", tt.contentType)
+
+			rr := httptest.NewRecorder()
+			JSONShortenHandler(rr, req)
+
+			if rr.Code != tt.expected {
+				t.Errorf("Expected status %d for Content-Type %q, got %d", tt.expected, tt.contentType, rr.Code)
+			}
+		})
+	}
+}
+
+// TestJSONShortenHandler_InvalidJSON тестирует обработку невалидного JSON
+func TestJSONShortenHandler_InvalidJSON(t *testing.T) {
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"Not JSON", "not json at all"},
+		{"Malformed JSON", `{"url":`},
+		{"Wrong structure", `{"link":"https://example.com"}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			JSONShortenHandler(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Errorf("Expected status %d for invalid JSON, got %d", http.StatusBadRequest, rr.Code)
+			}
+		})
+	}
+}
+
+// TestJSONShortenHandler_EmptyURL тестирует обработку пустого URL в JSON
+func TestJSONShortenHandler_EmptyURL(t *testing.T) {
+
+	body := `{"url":""}`
+	req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	JSONShortenHandler(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d for empty URL, got %d", http.StatusBadRequest, rr.Code)
+	}
+	expectedError := "URL cannot be empty"
+	if !strings.Contains(rr.Body.String(), expectedError) {
+		t.Errorf("Expected error message containing %q, got %q", expectedError, rr.Body.String())
+	}
+}
+
+// TestJSONShortenHandler_ValidURL тестирует успешное сокращение URL через JSON API
+func TestJSONShortenHandler_ValidURL(t *testing.T) {
+
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"Full HTTPS URL", "https://example.com/path", "https://example.com/path"},
+		{"Full HTTP URL", "http://example.com", "http://example.com"},
+		{"URL without scheme", "example.com", "http://example.com"},
+		{"URL with path", "example.com/path/to/resource", "http://example.com/path/to/resource"},
+		{"URL with query", "example.com?query=test", "http://example.com?query=test"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			reqBody := map[string]string{"url": tc.input}
+			bodyBytes, _ := json.Marshal(reqBody)
+			req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(string(bodyBytes)))
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			JSONShortenHandler(rr, req)
+
+			if rr.Code != http.StatusCreated {
+				t.Errorf("Expected status %d, got %d. Body: %s", http.StatusCreated, rr.Code, rr.Body.String())
+			}
+
+			contentType := rr.Header().Get("Content-Type")
+			if contentType != "application/json" {
+				t.Errorf("Expected Content-Type application/json, got %s", contentType)
+			}
+
+			var resp schemasshortener.ResponseSchema
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+
+			if resp.Result == "" {
+				t.Error("Expected result field to be set")
+			}
+			if !strings.HasPrefix(resp.Result, config.AppConfig.BaseURL) {
+				t.Errorf("Expected result to start with %s, got %s", config.AppConfig.BaseURL, resp.Result)
+			}
+
+			id := strings.TrimPrefix(resp.Result, config.AppConfig.BaseURL)
+			storedURL, exists := service.Shortener.GetOriginalURL(id)
+			if !exists {
+				t.Error("Expected URL to be stored")
+			}
+			if storedURL != tc.expected {
+				t.Errorf("Expected stored URL %s, got %s", tc.expected, storedURL)
+			}
+		})
+	}
+}
+
+// TestJSONShortenHandler_ResponseFormat тестирует формат JSON-ответа
+func TestJSONShortenHandler_ResponseFormat(t *testing.T) {
+
+	body := `{"url":"https://go.dev/"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	JSONShortenHandler(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("Expected status %d, got %d", http.StatusCreated, rr.Code)
+	}
+
+	var resp schemasshortener.ResponseSchema
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Response is not valid JSON: %v", err)
+	}
+
+	if resp.Result == "" {
+		t.Error("Expected result field to be non-empty")
+	}
+	if !strings.HasPrefix(resp.Result, config.AppConfig.BaseURL) {
+		t.Errorf("Expected result to be short URL starting with base, got %s", resp.Result)
 	}
 }
