@@ -13,6 +13,7 @@ import (
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
 	service "github.com/gearwheels/go_url_shortener/internal/service"
 )
@@ -44,9 +45,10 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	// пробросить в обработчики чтоб отдавать ответ с адресом b
 	b := flag.String("b", "http://localhost:8080/", "destination address")
 	f := flag.String("f", "./storage/store_url.txt", "destination file")
+	d := flag.String("d", "postgres://shortener:shortener@localhost:5432/shortener", "destination database")
 	// разбор командной строки
 	flag.Parse()
-	config.Init(*a, *b, *f)
+	config.Init(*a, *b, *f, *d)
 
 	// Наш middleware для логирования
 	router.Use(logrequest.RequestLogger(logger))
@@ -54,6 +56,7 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	router.Post("/", handler.ShortenHandler)
 	router.Post("/api/shorten", handler.JSONShortenHandler)
 	router.Get("/{id}", handler.RedirectHandler)
+	router.Get("/ping", handler.CheckDBStatus)
 
 	service.Shortener.ExtractFromFile()
 
