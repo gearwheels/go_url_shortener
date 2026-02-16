@@ -14,6 +14,7 @@ import (
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
 	service "github.com/gearwheels/go_url_shortener/internal/service"
 )
@@ -58,7 +59,25 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	router.Get("/{id}", handler.RedirectHandler)
 	router.Get("/ping", handler.CheckDBStatus)
 
-	service.Shortener.ExtractFromFile()
+	// Инициализация сервиса в зависимости от наличия базы данных
+	pgExist := config.AppConfig.DatabaseDsn != ""
+	var db *sqlx.DB
+	if pgExist {
+		var err error
+		db, err = sqlx.Connect("pgx", config.AppConfig.DatabaseDsn)
+		if err != nil {
+			slog.Error("Failed to connect to database, using in-memory storage", slog.String("err", err.Error()))
+			pgExist = false
+		}
+	}
+	service.Shortener = service.GetService(pgExist, db)
+
+	// Если используется in-memory хранилище, загружаем данные из файла
+	if !pgExist {
+		if urlShortener, ok := service.Shortener.(*service.URLShortener); ok {
+			urlShortener.ExtractFromFile()
+		}
+	}
 
 	// port := ":8080"
 	fmt.Printf("URL Shortener server starting on %s\n", *a)
@@ -70,7 +89,9 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	fmt.Println()
 	fmt.Println("  GET /{id} - Redirect to original URL")
 	fmt.Println("    Response: 307 with Location header")
-	fmt.Println(string(service.Shortener.PrintStore()))
+	if urlShortener, ok := service.Shortener.(*service.URLShortener); ok {
+		fmt.Println(string(urlShortener.PrintStore()))
+	}
 
 	if err := http.ListenAndServe(*a, router); err != nil {
 		slog.Error("Server error:", slog.String("err", err.Error()))

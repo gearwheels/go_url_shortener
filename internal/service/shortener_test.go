@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ func TestMain(m *testing.M) {
 	}
 	path := filepath.Join(dir, "store_url.txt")
 	config.Init("localhost:8888", "http://localhost:8000/", path, "postgres://shortener:shortener@localhost:5432/shortener")
+	Shortener = NewURLShortener()
 	os.Exit(m.Run())
 }
 
@@ -28,7 +30,7 @@ func TestGenerateID_Uniqueness(t *testing.T) {
 	ids := make(map[string]bool)
 
 	for i := 0; i < iterations; i++ {
-		id := shortener.generateID()
+		id := shortener.GenerateID()
 		if ids[id] {
 			t.Errorf("Duplicate ID generated: %s", id)
 		}
@@ -46,6 +48,7 @@ func TestConcurrentAccess(t *testing.T) {
 
 	var wg sync.WaitGroup
 	iterations := 100
+	ctx := context.Background()
 
 	// Конкурентно добавляем URL
 	for i := 0; i < iterations; i++ {
@@ -53,7 +56,10 @@ func TestConcurrentAccess(t *testing.T) {
 		go func(index int) {
 			defer wg.Done()
 			url := fmt.Sprintf("https://example.com/page%d", index)
-			shortener.ShortenURL(url)
+			_, err := shortener.ShortenURL(ctx, url)
+			if err != nil {
+				t.Errorf("Failed to shorten URL: %v", err)
+			}
 		}(i)
 	}
 
@@ -72,23 +78,24 @@ func TestConcurrentAccess(t *testing.T) {
 // TestURLShortener_getOriginalURL тестирует получение оригинального URL
 func TestURLShortener_GetOriginalURL(t *testing.T) {
 	shortener := NewURLShortener()
+	ctx := context.Background()
 
 	// Тест 1: Получение несуществующего URL
-	url, exists := shortener.GetOriginalURL("nonexistent")
-	if exists {
-		t.Error("Expected non-existing URL to not exist")
-	}
-	if url != "" {
-		t.Errorf("Expected empty string for non-existing URL, got %s", url)
+	_, err := shortener.GetOriginalURL(ctx, "nonexistent")
+	if err == nil {
+		t.Error("Expected error for non-existing URL")
 	}
 
 	// Тест 2: Получение существующего URL
 	testURL := "https://example.com"
-	id := shortener.ShortenURL(testURL)
+	id, err := shortener.ShortenURL(ctx, testURL)
+	if err != nil {
+		t.Fatalf("Failed to shorten URL: %v", err)
+	}
 
-	storedURL, exists := shortener.GetOriginalURL(id)
-	if !exists {
-		t.Error("Expected existing URL to exist")
+	storedURL, err := shortener.GetOriginalURL(ctx, id)
+	if err != nil {
+		t.Errorf("Expected existing URL to exist, got error: %v", err)
 	}
 	if storedURL != testURL {
 		t.Errorf("Expected URL %s, got %s", testURL, storedURL)
@@ -98,10 +105,14 @@ func TestURLShortener_GetOriginalURL(t *testing.T) {
 // TestURLShortener_shortenURL тестирует сокращение URL
 func TestURLShortener_ShortenURL(t *testing.T) {
 	shortener := NewURLShortener()
+	ctx := context.Background()
 
 	// Тест 1: Создание нового URL
 	url1 := "https://example.com"
-	id1 := shortener.ShortenURL(url1)
+	id1, err := shortener.ShortenURL(ctx, url1)
+	if err != nil {
+		t.Fatalf("Failed to shorten URL: %v", err)
+	}
 
 	if id1 == "" {
 		t.Error("Expected non-empty ID")
@@ -121,14 +132,20 @@ func TestURLShortener_ShortenURL(t *testing.T) {
 	}
 
 	// Тест 2: Попытка сократить тот же URL должна вернуть тот же ID
-	id2 := shortener.ShortenURL(url1)
+	id2, err := shortener.ShortenURL(ctx, url1)
+	if err != nil {
+		t.Fatalf("Failed to shorten URL: %v", err)
+	}
 	if id1 != id2 {
 		t.Errorf("Expected same ID for same URL, got %s and %s", id1, id2)
 	}
 
 	// Тест 3: Создание другого URL
 	url3 := "https://example.org"
-	id3 := shortener.ShortenURL(url3)
+	id3, err := shortener.ShortenURL(ctx, url3)
+	if err != nil {
+		t.Fatalf("Failed to shorten URL: %v", err)
+	}
 
 	if id3 == id1 {
 		t.Error("Expected different ID for different URL")

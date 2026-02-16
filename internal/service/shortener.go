@@ -2,9 +2,11 @@ package service
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"sync"
 
 	config "github.com/gearwheels/go_url_shortener/internal/config"
+	"github.com/jmoiron/sqlx"
 )
 
 type URLShortener struct {
@@ -33,43 +36,46 @@ func (us *URLShortener) RUnlockMu() {
 	us.mu.RUnlock()
 }
 
-func (us *URLShortener) generateID() string {
+func (us *URLShortener) GenerateID() string {
 	b := make([]byte, 6)
 	rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func (us *URLShortener) ShortenURL(originalURL string) string {
+func (us *URLShortener) ShortenURL(ctx context.Context, originalURL string) (string, error) {
 	us.mu.Lock()
 	defer us.mu.Unlock()
 
 	// Проверяем, есть ли уже такой URL в хранилище
 	for id, url := range us.store {
 		if url == originalURL {
-			return id // Возвращаем существующий ID
+			return id, nil // Возвращаем существующий ID
 		}
 	}
 	// Генерируем уникальный ID
 	var id string
 	for {
-		id = us.generateID()
+		id = us.GenerateID()
 		if _, exists := us.store[id]; !exists {
 			break
 		}
 	}
 	// Сохраняем в хранилище
 	us.store[id] = originalURL
-	Shortener.UpdateFile("\"" + id + "\": \"" + originalURL + "\"")
+	us.UpdateFile("\"" + id + "\": \"" + originalURL + "\"")
 	slog.Info("Shortened URL: " + id + " -> " + originalURL)
-	return id
+	return id, nil
 }
 
-func (us *URLShortener) GetOriginalURL(id string) (string, bool) {
+func (us *URLShortener) GetOriginalURL(ctx context.Context, id string) (string, error) {
 	us.mu.RLock()
 	defer us.mu.RUnlock()
 
 	url, exists := us.store[id]
-	return url, exists
+	if !exists {
+		return "", errors.New("short URL not found")
+	}
+	return url, nil
 }
 
 func (us *URLShortener) GetLenStore() int {
@@ -158,4 +164,15 @@ func (us *URLShortener) ExtractFromFile() error {
 	return nil
 }
 
-var Shortener = NewURLShortener()
+var Shortener URLShortenerInterface
+
+func GetService(pgExist bool, db interface{}) URLShortenerInterface {
+	if pgExist {
+		if dbConn, ok := db.(*sqlx.DB); ok {
+			return NewUrlPostgresRepository(dbConn)
+		}
+		// return nil
+	}
+	return NewURLShortener()
+}
+

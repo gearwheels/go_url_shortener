@@ -48,7 +48,11 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		originalURL = "http://" + originalURL
 	}
 
-	id := service.Shortener.ShortenURL(originalURL)
+	id, err := service.Shortener.ShortenURL(r.Context(), originalURL)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	shortenedURL := fmt.Sprintf("%s%s", config.AppConfig.BaseURL, id)
 
@@ -95,7 +99,11 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 		request.URL = "http://" + request.URL
 	}
 
-	id := service.Shortener.ShortenURL(request.URL)
+	id, err := service.Shortener.ShortenURL(r.Context(), request.URL)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	shortenedURL := fmt.Sprintf("%s%s", config.AppConfig.BaseURL, id)
 	response.Result = shortenedURL
@@ -114,18 +122,16 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request) { 
-
 	// Извлекаем ID из пути (убираем ведущий слэш)
 	id := strings.TrimPrefix(r.URL.Path, "/")
 
 	if id == "" {
-		// fmt.Fprint(w, "Send POST request with URL in body as text/plain to shorten URL")
 		http.Error(w, "Send POST request with URL in body as text/plain to shorten URL", http.StatusBadRequest)
 		return
 	}
 
-	originalURL, exists := service.Shortener.GetOriginalURL(id)
-	if !exists {
+	originalURL, err := service.Shortener.GetOriginalURL(r.Context(), id)
+	if err != nil {
 		http.Error(w, "Short URL not found", http.StatusNotFound)
 		return
 	}
