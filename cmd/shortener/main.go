@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -10,13 +11,17 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/jmoiron/sqlx"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
 	service "github.com/gearwheels/go_url_shortener/internal/service"
+	"github.com/gearwheels/go_url_shortener/migrations"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
 )
 
 func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.go" -a localhost:8080 -b http://localhost:8080/
@@ -68,6 +73,13 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 		if err != nil {
 			slog.Error("Failed to connect to database, using in-memory storage", slog.String("err", err.Error()))
 			pgExist = false
+		} else {
+			defer db.Close()
+			if err := runMigrations(db.DB); err != nil {
+				slog.Error("Ошибка применения миграций:", "error", err)
+			} else {
+				slog.Info("Миграции успешно применены. Запуск сервера...")
+			}
 		}
 	}
 	service.Shortener = service.GetService(pgExist, db)
@@ -78,7 +90,7 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 			urlShortener.ExtractFromFile()
 		}
 	}
-
+	
 	// port := ":8080"
 	fmt.Printf("URL Shortener server starting on %s\n", *a)
 	fmt.Println("\nEndpoints:")
@@ -97,4 +109,25 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 		slog.Error("Server error:", slog.String("err", err.Error()))
 
 	}
+}
+
+func runMigrations(db *sql.DB) error {
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		return err
+	}
+	sourceDriver, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		return err
+	}
+	m, err := migrate.NewWithInstance("iofs", sourceDriver, "postgres", driver)
+	if err != nil {
+		return err
+	}
+	// defer m.Close()
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return err
+	}
+	return nil
 }

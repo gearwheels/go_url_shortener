@@ -169,7 +169,7 @@ var Shortener URLShortenerInterface
 func GetService(pgExist bool, db interface{}) URLShortenerInterface {
 	if pgExist {
 		if dbConn, ok := db.(*sqlx.DB); ok {
-			return NewUrlPostgresRepository(dbConn)
+			return NewURLPostgresRepository(dbConn)
 		}
 		// return nil
 	}
