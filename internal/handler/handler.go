@@ -121,7 +121,7 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Created short URL: %s for %s", shortenedURL, request.URL)
 }
 
-func RedirectHandler(w http.ResponseWriter, r *http.Request) { 
+func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	// Извлекаем ID из пути (убираем ведущий слэш)
 	id := strings.TrimPrefix(r.URL.Path, "/")
 
@@ -142,26 +142,75 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Redirecting %s -> %s", id, originalURL)
 }
 
-
-func CheckDBStatus(w http.ResponseWriter, r *http.Request) { 
+func CheckDBStatus(w http.ResponseWriter, r *http.Request) {
 
 	db, err := sql.Open("pgx", config.AppConfig.DatabaseDsn)
-    if err != nil {
-        slog.Error("Ошибка открытия соединения: " + err.Error())
-    }
-    defer db.Close()
+	if err != nil {
+		slog.Error("Ошибка открытия соединения: " + err.Error())
+	}
+	defer db.Close()
 
 	err = db.Ping()
 	if err != nil {
 		http.Error(w, "Short URL not found", http.StatusInternalServerError)
 		return
-	}else{
+	} else {
 		w.WriteHeader(http.StatusOK)
 		slog.Info("Data base alive!")
 		return
 	}
+}
 
+func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		http.Error(w, "Unsupported Media Type. Expected application/json",
+			http.StatusUnsupportedMediaType)
+		return
+	}
+	var buf bytes.Buffer
+	var batchURL []schemasshortener.RequestBatchURLSchema
+	var response []schemasshortener.ResponseBatchURLSchema
 
+	// читаем тело запроса
+	_, err := buf.ReadFrom(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
+	if err = json.Unmarshal(buf.Bytes(), &batchURL); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if len(batchURL) == 0 {
+		http.Error(w, "Batch of URL cannot be empty", http.StatusBadRequest)
+		return
+	}
+	for _, val := range batchURL{
+		if !strings.HasPrefix(val.OriginalURL, "http://") &&
+		!strings.HasPrefix(val.OriginalURL, "https://") {
+		val.OriginalURL = "http://" + val.OriginalURL
+	}
+		id, err := service.Shortener.ShortenURL(r.Context(), val.OriginalURL)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		shortenedURL := fmt.Sprintf("%s%s", config.AppConfig.BaseURL, id)
+		response = append(response, schemasshortener.ResponseBatchURLSchema{CorrelationID: val.CorrelationID, ShortUrl: shortenedURL})
+		slog.Info("Created short URL: %s for %s", shortenedURL, val.OriginalURL)
+	}
 	
+	resp, err := json.Marshal(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+
+	w.Write(resp)
 }
