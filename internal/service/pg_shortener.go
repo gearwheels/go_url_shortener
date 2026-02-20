@@ -45,11 +45,11 @@ func NewURLPostgresRepository(db *sqlx.DB) ShortenerRepository {
 
 func (r *urlPostgresRepository) Create(ctx context.Context, u URL) (shortCode string, inserted bool, err error) {
 	query := `
-	INSERT INTO shortened_urls (original_url, short_code)
+	INSERT INTO urls (url, short_url)
 	VALUES ($1, $2)
-	ON CONFLICT (original_url) DO UPDATE
-		SET original_url = EXCLUDED.original_url
-	RETURNING short_code, (xmax = 0) AS inserted
+	ON CONFLICT (url) DO UPDATE
+		SET url = EXCLUDED.url
+	RETURNING short_url, (xmax = 0) AS inserted
 	`
 	err = r.db.QueryRowContext(ctx, query, u.URL, u.ShortURL).Scan(&shortCode, &inserted)
 	if err != nil {
