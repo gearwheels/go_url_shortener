@@ -42,14 +42,14 @@ func (us *URLShortener) GenerateID() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func (us *URLShortener) ShortenURL(ctx context.Context, originalURL string) (string, error) {
+func (us *URLShortener) ShortenURL(ctx context.Context, originalURL string) (string, bool, error) {
 	us.mu.Lock()
 	defer us.mu.Unlock()
 
 	// Проверяем, есть ли уже такой URL в хранилище
 	for id, url := range us.store {
 		if url == originalURL {
-			return id, nil // Возвращаем существующий ID
+			return id, false, nil // Возвращаем существующий short_url и bool false - означает что short_url найден а не создан
 		}
 	}
 	// Генерируем уникальный ID
@@ -64,7 +64,7 @@ func (us *URLShortener) ShortenURL(ctx context.Context, originalURL string) (str
 	us.store[id] = originalURL
 	us.UpdateFile("\"" + id + "\": \"" + originalURL + "\"")
 	slog.Info("Shortened URL: " + id + " -> " + originalURL)
-	return id, nil
+	return id, true, nil
 }
 
 func (us *URLShortener) GetOriginalURL(ctx context.Context, id string) (string, error) {

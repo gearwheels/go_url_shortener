@@ -26,29 +26,46 @@ func TestURLPostgresRepository_Create(t *testing.T) {
 	repo := NewURLPostgresRepository(sqlxDB)
 	ctx := context.Background()
 
-	t.Run("success", func(t *testing.T) {
-		mock.ExpectQuery(`INSERT INTO urls \(url, short_url\) VALUES \(\$1, \$2\) RETURNING id`).
+	t.Run("success insert", func(t *testing.T) {
+		mock.ExpectQuery(`INSERT INTO shortened_urls`).
 			WithArgs("https://example.com", "abc123").
-			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+			WillReturnRows(sqlmock.NewRows([]string{"short_code", "inserted"}).AddRow("abc123", true))
 
-		err := repo.Create(ctx, URL{
+		shortCode, inserted, err := repo.Create(ctx, URL{
 			URL:      "https://example.com",
 			ShortURL: "abc123",
 		})
 		if err != nil {
 			t.Errorf("Create: %v", err)
 		}
+		if shortCode != "abc123" || !inserted {
+			t.Errorf("Create: shortCode=%q inserted=%v", shortCode, inserted)
+		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("expectations: %v", err)
 		}
 	})
 
+	t.Run("success conflict returns existing", func(t *testing.T) {
+		mock.ExpectQuery(`INSERT INTO shortened_urls`).
+			WithArgs("https://example.com", "newid").
+			WillReturnRows(sqlmock.NewRows([]string{"short_code", "inserted"}).AddRow("existing123", false))
+
+		shortCode, inserted, err := repo.Create(ctx, URL{URL: "https://example.com", ShortURL: "newid"})
+		if err != nil {
+			t.Errorf("Create: %v", err)
+		}
+		if shortCode != "existing123" || inserted {
+			t.Errorf("Create: shortCode=%q inserted=%v", shortCode, inserted)
+		}
+	})
+
 	t.Run("error", func(t *testing.T) {
-		mock.ExpectQuery(`INSERT INTO urls \(url, short_url\) VALUES \(\$1, \$2\) RETURNING id`).
+		mock.ExpectQuery(`INSERT INTO shortened_urls`).
 			WithArgs("https://bad.com", "x").
 			WillReturnError(sql.ErrConnDone)
 
-		err := repo.Create(ctx, URL{URL: "https://bad.com", ShortURL: "x"})
+		_, _, err := repo.Create(ctx, URL{URL: "https://bad.com", ShortURL: "x"})
 		if err == nil {
 			t.Error("expected error")
 		}
@@ -249,42 +266,40 @@ func TestURLPostgresRepository_ShortenURL(t *testing.T) {
 
 	t.Run("new url", func(t *testing.T) {
 		originalURL := "https://example.com/new"
-		// GetByURL — не найден
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls WHERE url = \$1`).
-			WithArgs(originalURL).
-			WillReturnError(sql.ErrNoRows)
-		// GetByShortURL в цикле — первый вызов не найден (уникальный short id)
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls WHERE short_url = \$1`).
-			WithArgs(sqlmock.AnyArg()).
-			WillReturnError(sql.ErrNoRows)
-		// Create
-		mock.ExpectQuery(`INSERT INTO urls \(url, short_url\) VALUES \(\$1, \$2\) RETURNING id`).
+		// Create (INSERT ... ON CONFLICT) — новая запись
+		mock.ExpectQuery(`INSERT INTO shortened_urls`).
 			WithArgs(originalURL, sqlmock.AnyArg()).
-			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+			WillReturnRows(sqlmock.NewRows([]string{"short_code", "inserted"}).AddRow("abc123", true))
 
-		short, err := repo.ShortenURL(ctx, originalURL)
+		short, inserted, err := repo.ShortenURL(ctx, originalURL)
 		if err != nil {
 			t.Errorf("ShortenURL: %v", err)
 		}
 		if short == "" {
 			t.Error("expected non-empty short URL")
 		}
+		if !inserted {
+			t.Error("expected inserted=true for new URL")
+		}
 	})
 
 	t.Run("duplicate url returns existing short", func(t *testing.T) {
 		originalURL := "https://example.com/dup"
 		existingShort := "existing123"
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls WHERE url = \$1`).
-			WithArgs(originalURL).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "url", "short_url"}).
-				AddRow(1, originalURL, existingShort))
+		// Create (ON CONFLICT) возвращает существующий short_code и inserted=false
+		mock.ExpectQuery(`INSERT INTO shortened_urls`).
+			WithArgs(originalURL, sqlmock.AnyArg()).
+			WillReturnRows(sqlmock.NewRows([]string{"short_code", "inserted"}).AddRow(existingShort, false))
 
-		short, err := repo.ShortenURL(ctx, originalURL)
+		short, inserted, err := repo.ShortenURL(ctx, originalURL)
 		if err != nil {
 			t.Errorf("ShortenURL: %v", err)
 		}
 		if short != existingShort {
 			t.Errorf("expected %q, got %q", existingShort, short)
+		}
+		if inserted {
+			t.Error("expected inserted=false for duplicate URL")
 		}
 	})
 }
@@ -319,8 +334,8 @@ func TestURLPostgresRepository_GetOriginalURL(t *testing.T) {
 			WillReturnError(sql.ErrNoRows)
 
 		got, err := repo.GetOriginalURL(ctx, "nonexistent")
-		if err != nil {
-			t.Errorf("GetOriginalURL (not found) returned error: %v", err)
+		if err == nil {
+			t.Error("GetOriginalURL (not found) expected error")
 		}
 		if got != "" {
 			t.Errorf("expected empty string, got %q", got)

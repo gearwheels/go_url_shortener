@@ -21,12 +21,12 @@ func TestShortenHandler_ContentType(t *testing.T) {
 	tests := []struct {
 		name        string
 		contentType string
-		expected    int
+		expectedOk  []int
 	}{
-		{"Valid plain text", "text/plain", http.StatusCreated},
-		{"Invalid JSON", "application/json", http.StatusUnsupportedMediaType},
-		{"Invalid form data", "application/x-www-form-urlencoded", http.StatusUnsupportedMediaType},
-		{"Empty", "", http.StatusUnsupportedMediaType},
+		{"Valid plain text", "text/plain", []int{http.StatusCreated, http.StatusConflict}},
+		{"Invalid JSON", "application/json", []int{http.StatusUnsupportedMediaType}},
+		{"Invalid form data", "application/x-www-form-urlencoded", []int{http.StatusUnsupportedMediaType}},
+		{"Empty", "", []int{http.StatusUnsupportedMediaType}},
 	}
 
 	if config.AppConfig == nil {
@@ -48,8 +48,15 @@ func TestShortenHandler_ContentType(t *testing.T) {
 			rr := httptest.NewRecorder()
 			ShortenHandler(rr, req)
 
-			if rr.Code != tt.expected {
-				t.Errorf("Expected status %d for %s, got %d", tt.expected, tt.contentType, rr.Code)
+			ok := false
+			for _, code := range tt.expectedOk {
+				if rr.Code == code {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				t.Errorf("Expected status one of %v for %s, got %d", tt.expectedOk, tt.contentType, rr.Code)
 			}
 		})
 	}
@@ -100,8 +107,9 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 			rr := httptest.NewRecorder()
 			ShortenHandler(rr, req)
 
-			if rr.Code != http.StatusCreated {
-				t.Errorf("Expected status %d, got %d", http.StatusCreated, rr.Code)
+			// 201 — новая запись, 409 — URL уже был сокращён (дубликат)
+			if rr.Code != http.StatusCreated && rr.Code != http.StatusConflict {
+				t.Errorf("Expected status %d or %d, got %d", http.StatusCreated, http.StatusConflict, rr.Code)
 			}
 
 			// Проверяем заголовки
@@ -164,7 +172,7 @@ func TestShortenHandler_DuplicateURL(t *testing.T) {
 	shortURL1 := rr1.Body.String()
 	id1 := strings.TrimPrefix(shortURL1, "http://localhost:8080/")
 
-	// Второй запрос с тем же URL
+	// Второй запрос с тем же URL — должен вернуть 409 Conflict и тот же short URL
 	body2 := strings.NewReader(url)
 	req2 := httptest.NewRequest(http.MethodPost, "/", body2)
 	req2.Header.Set("Content-Type", "text/plain")
@@ -173,8 +181,8 @@ func TestShortenHandler_DuplicateURL(t *testing.T) {
 	rr2 := httptest.NewRecorder()
 	ShortenHandler(rr2, req2)
 
-	if rr2.Code != http.StatusCreated {
-		t.Fatalf("Second request failed with status %d", rr2.Code)
+	if rr2.Code != http.StatusConflict {
+		t.Fatalf("Second request (duplicate) expected status %d, got %d", http.StatusConflict, rr2.Code)
 	}
 
 	shortURL2 := rr2.Body.String()
@@ -296,7 +304,7 @@ func TestRedirectHandler_Success(t *testing.T) {
 	// Сначала создаем короткий URL
 	originalURL := "https://example.com/redirect-test"
 	ctx := context.Background()
-	id, err := service.Shortener.ShortenURL(ctx, originalURL)
+	id, _, err := service.Shortener.ShortenURL(ctx, originalURL)
 	if err != nil {
 		t.Fatalf("Failed to shorten URL: %v", err)
 	}
@@ -339,14 +347,14 @@ func TestRedirectHandler_RootPath(t *testing.T) {
 func TestJSONShortenHandler_ContentType(t *testing.T) {
 
 	tests := []struct {
-		name        string
-		contentType string
-		expected    int
+		name         string
+		contentType  string
+		expectedOk   []int
 	}{
-		{"Valid JSON", "application/json", http.StatusCreated},
-		{"Invalid plain text", "text/plain", http.StatusUnsupportedMediaType},
-		{"Invalid form data", "application/x-www-form-urlencoded", http.StatusUnsupportedMediaType},
-		{"Empty", "", http.StatusUnsupportedMediaType},
+		{"Valid JSON", "application/json", []int{http.StatusCreated, http.StatusConflict}},
+		{"Invalid plain text", "text/plain", []int{http.StatusUnsupportedMediaType}},
+		{"Invalid form data", "application/x-www-form-urlencoded", []int{http.StatusUnsupportedMediaType}},
+		{"Empty", "", []int{http.StatusUnsupportedMediaType}},
 	}
 
 	body := `{"url":"https://example.com"}`
@@ -358,8 +366,15 @@ func TestJSONShortenHandler_ContentType(t *testing.T) {
 			rr := httptest.NewRecorder()
 			JSONShortenHandler(rr, req)
 
-			if rr.Code != tt.expected {
-				t.Errorf("Expected status %d for Content-Type %q, got %d", tt.expected, tt.contentType, rr.Code)
+			ok := false
+			for _, code := range tt.expectedOk {
+				if rr.Code == code {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				t.Errorf("Expected status one of %v for Content-Type %q, got %d", tt.expectedOk, tt.contentType, rr.Code)
 			}
 		})
 	}
@@ -436,8 +451,9 @@ func TestJSONShortenHandler_ValidURL(t *testing.T) {
 			rr := httptest.NewRecorder()
 			JSONShortenHandler(rr, req)
 
-			if rr.Code != http.StatusCreated {
-				t.Errorf("Expected status %d, got %d. Body: %s", http.StatusCreated, rr.Code, rr.Body.String())
+			// 201 — новая запись, 409 — URL уже был сокращён (дубликат)
+			if rr.Code != http.StatusCreated && rr.Code != http.StatusConflict {
+				t.Errorf("Expected status %d or %d, got %d. Body: %s", http.StatusCreated, http.StatusConflict, rr.Code, rr.Body.String())
 			}
 
 			contentType := rr.Header().Get("Content-Type")
@@ -480,8 +496,8 @@ func TestJSONShortenHandler_ResponseFormat(t *testing.T) {
 	rr := httptest.NewRecorder()
 	JSONShortenHandler(rr, req)
 
-	if rr.Code != http.StatusCreated {
-		t.Fatalf("Expected status %d, got %d", http.StatusCreated, rr.Code)
+	if rr.Code != http.StatusCreated && rr.Code != http.StatusConflict {
+		t.Fatalf("Expected status %d or %d, got %d", http.StatusCreated, http.StatusConflict, rr.Code)
 	}
 
 	var resp schemasshortener.ResponseSchema

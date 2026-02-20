@@ -204,7 +204,7 @@ func TestRouterWithMiddleware_Redirect(t *testing.T) {
 	router := newTestRouter(t)
 	originalURL := "https://example.com/redirect-middleware"
 	ctx := context.Background()
-	id, err := service.Shortener.ShortenURL(ctx, originalURL)
+	id, _, err := service.Shortener.ShortenURL(ctx, originalURL)
 	if err != nil {
 		t.Fatalf("Failed to shorten URL: %v", err)
 	}

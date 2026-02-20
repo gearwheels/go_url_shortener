@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -19,14 +20,14 @@ type URL struct {
 
 // URLShortenerInterface определяет методы для работы с короткими URL
 type URLShortenerInterface interface {
-	ShortenURL(ctx context.Context, originalURL string) (string, error)
+	ShortenURL(ctx context.Context, originalURL string) (string, bool, error)
 	GetOriginalURL(ctx context.Context, id string) (string, error)
 	GenerateID() string
 }
 
 type ShortenerRepository interface {
 	URLShortenerInterface
-	Create(ctx context.Context, url URL ) error
+	Create(ctx context.Context, url URL) (shortCode string, inserted bool, err error)
 	GetByID(ctx context.Context, id int64) (URL , error)
 	GetByURL(ctx context.Context, url string) (URL , error)
 	GetByShortURL (ctx context.Context, shortURL string) (URL , error)
@@ -42,14 +43,19 @@ func NewURLPostgresRepository(db *sqlx.DB) ShortenerRepository {
 	return &urlPostgresRepository{db: db}
 }
 
-func (r *urlPostgresRepository) Create(ctx context.Context, u URL ) error {
-	query := `INSERT INTO urls (url, short_url) VALUES ($1, $2) RETURNING id`
-	var id int
-	err := r.db.QueryRowxContext(ctx, query, u.URL , u.ShortURL ).Scan(&id)
+func (r *urlPostgresRepository) Create(ctx context.Context, u URL) (shortCode string, inserted bool, err error) {
+	query := `
+	INSERT INTO shortened_urls (original_url, short_code)
+	VALUES ($1, $2)
+	ON CONFLICT (original_url) DO UPDATE
+		SET original_url = EXCLUDED.original_url
+	RETURNING short_code, (xmax = 0) AS inserted
+	`
+	err = r.db.QueryRowContext(ctx, query, u.URL, u.ShortURL).Scan(&shortCode, &inserted)
 	if err != nil {
-		slog.Error(err.Error())
+		return "", false, err
 	}
-	return err
+	return shortCode, inserted, nil
 }
 
 func (r *urlPostgresRepository) GetByID(ctx context.Context, id int64) (URL , error) {
@@ -117,46 +123,41 @@ func (r *urlPostgresRepository) GenerateID() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func (r *urlPostgresRepository) ShortenURL(ctx context.Context, originalURL string) (string, error) {
-	url, err := r.GetByURL(ctx, originalURL)
-	if err != nil {
-		return "", err
-	}
-	if url.ShortURL != "" {
-		return url.ShortURL , nil
-	}
-	// Генерируем уникальный ID
-	var id string
+func (r *urlPostgresRepository) ShortenURL(ctx context.Context, originalURL string) (string, bool, error) {
+	var shortCode string
+	var inserted bool
+	var err error
 	for {
-		id = r.GenerateID()
-		rowURL , err := r.GetByShortURL (ctx, id)
-		if err != nil {
-			return "", err
-		}
-
-		if rowURL == (URL {}) {
+		id := r.GenerateID()
+		shortCode, inserted, err = r.Create(ctx, URL{URL: originalURL, ShortURL: id})
+		if err == nil {
 			break
 		}
+		// Повторяем только при конфликте по short_code (коллизия генерации ID)
+		if !isConflictOnShortCode(err) {
+			return "", false, err
+		}
 	}
-	// Сохраняем в хранилище
-	newRowURL := URL {
-		URL :      originalURL,
-		ShortURL : id,
+	slog.Info("Shortened URL: " + shortCode + " -> " + originalURL)
+	return shortCode, inserted, nil
+}
+
+// isConflictOnShortCode проверяет, что ошибка — нарушение уникальности (в т.ч. по short_code).
+func isConflictOnShortCode(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505" // unique_violation
 	}
-	err = r.Create(ctx, newRowURL )
-	if err != nil {
-		return "", err
-	}
-	// us.store[id] = originalURL
-	// Shortener.UpdateFile("\"" + id + "\": \"" + originalURL + "\"")
-	slog.Info("Shortened URL: " + id + " -> " + originalURL)
-	return newRowURL .ShortURL , nil
+	return false
 }
 
 func (r *urlPostgresRepository) GetOriginalURL(ctx context.Context, id string) (string, error) {
-	url, err := r.GetByShortURL (ctx, id)
+	u, err := r.GetByShortURL(ctx, id)
 	if err != nil {
 		return "", err
 	}
-	return url.URL , nil
+	if u.URL == "" {
+		return "", sql.ErrNoRows
+	}
+	return u.URL, nil
 }

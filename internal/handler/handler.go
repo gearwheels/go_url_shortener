@@ -48,7 +48,7 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		originalURL = "http://" + originalURL
 	}
 
-	id, err := service.Shortener.ShortenURL(r.Context(), originalURL)
+	id, inserted, err := service.Shortener.ShortenURL(r.Context(), originalURL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -58,7 +58,11 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Location", shortenedURL)
-	w.WriteHeader(http.StatusCreated)
+	if inserted {
+		w.WriteHeader(http.StatusCreated)
+	} else {
+		w.WriteHeader(http.StatusConflict)
+	}
 
 	fmt.Fprint(w, shortenedURL)
 
@@ -99,7 +103,7 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 		request.URL = "http://" + request.URL
 	}
 
-	id, err := service.Shortener.ShortenURL(r.Context(), request.URL)
+	id, inserted, err := service.Shortener.ShortenURL(r.Context(), request.URL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -114,7 +118,11 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
+	if inserted {
+		w.WriteHeader(http.StatusCreated)
+	} else {
+		w.WriteHeader(http.StatusConflict)
+	}
 
 	w.Write(resp)
 
@@ -193,7 +201,7 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 			!strings.HasPrefix(val.OriginalURL, "https://") {
 			val.OriginalURL = "http://" + val.OriginalURL
 		}
-		id, err := service.Shortener.ShortenURL(r.Context(), val.OriginalURL)
+		id, _, err := service.Shortener.ShortenURL(r.Context(), val.OriginalURL)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
