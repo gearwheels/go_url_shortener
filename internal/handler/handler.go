@@ -188,21 +188,21 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Batch of URL cannot be empty", http.StatusBadRequest)
 		return
 	}
-	for _, val := range batchURL{
+	for _, val := range batchURL {
 		if !strings.HasPrefix(val.OriginalURL, "http://") &&
-		!strings.HasPrefix(val.OriginalURL, "https://") {
-		val.OriginalURL = "http://" + val.OriginalURL
-	}
+			!strings.HasPrefix(val.OriginalURL, "https://") {
+			val.OriginalURL = "http://" + val.OriginalURL
+		}
 		id, err := service.Shortener.ShortenURL(r.Context(), val.OriginalURL)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		shortenedURL := fmt.Sprintf("%s%s", config.AppConfig.BaseURL, id)
-		response = append(response, schemasshortener.ResponseBatchURLSchema{CorrelationID: val.CorrelationID, ShortUrl: shortenedURL})
+		response = append(response, schemasshortener.ResponseBatchURLSchema{CorrelationID: val.CorrelationID, ShortURL: shortenedURL})
 		slog.Info("Created short URL: %s for %s", shortenedURL, val.OriginalURL)
 	}
-	
+
 	resp, err := json.Marshal(response)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
