@@ -1,14 +1,10 @@
-package service
+package repository
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"errors"
-	"log/slog"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -18,15 +14,7 @@ type URL struct {
 	ShortURL string `db:"short_url"`
 }
 
-// URLShortenerInterface определяет методы для работы с короткими URL
-type URLShortenerInterface interface {
-	ShortenURL(ctx context.Context, originalURL string) (string, bool, error)
-	GetOriginalURL(ctx context.Context, id string) (string, error)
-	GenerateID() string
-}
-
 type ShortenerRepository interface {
-	URLShortenerInterface
 	Create(ctx context.Context, url URL) (shortCode string, inserted bool, err error)
 	GetByID(ctx context.Context, id int64) (URL , error)
 	GetByURL(ctx context.Context, url string) (URL , error)
@@ -39,7 +27,9 @@ type urlPostgresRepository struct {
 	db *sqlx.DB
 }
 
-func NewURLPostgresRepository(db *sqlx.DB) ShortenerRepository {
+// NewURLPostgresRepository возвращает конкретную реализацию репозитория.
+// Репозиторий содержит только методы работы с данными.
+func NewURLPostgresRepository(db *sqlx.DB) *urlPostgresRepository {
 	return &urlPostgresRepository{db: db}
 }
 
@@ -115,49 +105,4 @@ func (r *urlPostgresRepository) List(ctx context.Context) ([]URL , error) {
 	query := `SELECT id, url, short_url FROM urls ORDER BY id`
 	err := r.db.SelectContext(ctx, &list, query)
 	return list, err
-}
-
-func (r *urlPostgresRepository) GenerateID() string {
-	b := make([]byte, 6)
-	rand.Read(b)
-	return base64.RawURLEncoding.EncodeToString(b)
-}
-
-func (r *urlPostgresRepository) ShortenURL(ctx context.Context, originalURL string) (string, bool, error) {
-	var shortCode string
-	var inserted bool
-	var err error
-	for {
-		id := r.GenerateID()
-		shortCode, inserted, err = r.Create(ctx, URL{URL: originalURL, ShortURL: id})
-		if err == nil {
-			break
-		}
-		// Повторяем только при конфликте по short_code (коллизия генерации ID)
-		if !isConflictOnShortCode(err) {
-			return "", false, err
-		}
-	}
-	slog.Info("Shortened URL: " + shortCode + " -> " + originalURL)
-	return shortCode, inserted, nil
-}
-
-// isConflictOnShortCode проверяет, что ошибка — нарушение уникальности (в т.ч. по short_code).
-func isConflictOnShortCode(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23505" // unique_violation
-	}
-	return false
-}
-
-func (r *urlPostgresRepository) GetOriginalURL(ctx context.Context, id string) (string, error) {
-	u, err := r.GetByShortURL(ctx, id)
-	if err != nil {
-		return "", err
-	}
-	if u.URL == "" {
-		return "", sql.ErrNoRows
-	}
-	return u.URL, nil
 }

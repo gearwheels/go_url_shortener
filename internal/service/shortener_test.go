@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
+	repo "github.com/gearwheels/go_url_shortener/repositories"
 )
 
 func TestMain(m *testing.M) {
@@ -18,13 +19,17 @@ func TestMain(m *testing.M) {
 	}
 	path := filepath.Join(dir, "store_url.txt")
 	config.Init("localhost:8888", "http://localhost:8000/", path, "postgres://shortener:shortener@localhost:5432/shortener")
-	Shortener = NewURLShortener()
+	Shortener = NewShortenerService(repo.NewRepoShortener())
 	os.Exit(m.Run())
+}
+
+func newTestService() URLShortenerInterface {
+	return NewShortenerService(repo.NewRepoShortener())
 }
 
 // TestGenerateID_Uniqueness тестирует уникальность генерируемых ID
 func TestGenerateID_Uniqueness(t *testing.T) {
-	shortener := NewURLShortener()
+	shortener := newTestService()
 
 	iterations := 1000
 	ids := make(map[string]bool)
@@ -44,7 +49,7 @@ func TestGenerateID_Uniqueness(t *testing.T) {
 
 // TestConcurrentAccess тестирует конкурентный доступ к хранилищу
 func TestConcurrentAccess(t *testing.T) {
-	shortener := NewURLShortener()
+	shortener := newTestService()
 
 	var wg sync.WaitGroup
 	iterations := 100
@@ -56,28 +61,27 @@ func TestConcurrentAccess(t *testing.T) {
 		go func(index int) {
 			defer wg.Done()
 			url := fmt.Sprintf("https://example.com/page%d", index)
-			_, _, err := shortener.ShortenURL(ctx, url)
+			id, inserted, err := shortener.ShortenURL(ctx, url)
 			if err != nil {
 				t.Errorf("Failed to shorten URL: %v", err)
+				return
+			}
+			if id == "" {
+				t.Error("Expected non-empty ID")
+			}
+			if !inserted {
+				// для разных URL вставка должна быть новой
+				t.Error("Expected inserted=true for new URL")
 			}
 		}(i)
 	}
 
 	wg.Wait()
-
-	// Проверяем, что все URL добавлены
-	shortener.RLockMu()
-	count := len(shortener.store)
-	shortener.RUnlockMu()
-
-	if count != iterations {
-		t.Errorf("Expected %d URLs in store, got %d", iterations, count)
-	}
 }
 
 // TestURLShortener_getOriginalURL тестирует получение оригинального URL
 func TestURLShortener_GetOriginalURL(t *testing.T) {
-	shortener := NewURLShortener()
+	shortener := newTestService()
 	ctx := context.Background()
 
 	// Тест 1: Получение несуществующего URL
@@ -104,12 +108,12 @@ func TestURLShortener_GetOriginalURL(t *testing.T) {
 
 // TestURLShortener_shortenURL тестирует сокращение URL
 func TestURLShortener_ShortenURL(t *testing.T) {
-	shortener := NewURLShortener()
+	shortener := newTestService()
 	ctx := context.Background()
 
 	// Тест 1: Создание нового URL
 	url1 := "https://example.com"
-	id1, _, err := shortener.ShortenURL(ctx, url1)
+	id1, inserted1, err := shortener.ShortenURL(ctx, url1)
 	if err != nil {
 		t.Fatalf("Failed to shorten URL: %v", err)
 	}
@@ -117,32 +121,34 @@ func TestURLShortener_ShortenURL(t *testing.T) {
 	if id1 == "" {
 		t.Error("Expected non-empty ID")
 	}
-
-	// Проверяем, что URL сохранен
-	shortener.RLockMu()
-	storedURL, exists := shortener.store[id1]
-	shortener.RUnlockMu()
-
-	if !exists {
-		t.Error("Expected URL to be stored")
+	if !inserted1 {
+		t.Error("Expected inserted=true for first URL")
 	}
 
+	// Проверяем, что URL сохранен через GetOriginalURL
+	storedURL, err := shortener.GetOriginalURL(ctx, id1)
+	if err != nil {
+		t.Fatalf("Expected URL to be stored, got error: %v", err)
+	}
 	if storedURL != url1 {
 		t.Errorf("Expected stored URL %s, got %s", url1, storedURL)
 	}
 
 	// Тест 2: Попытка сократить тот же URL должна вернуть тот же ID
-	id2, _, err := shortener.ShortenURL(ctx, url1)
+	id2, inserted2, err := shortener.ShortenURL(ctx, url1)
 	if err != nil {
 		t.Fatalf("Failed to shorten URL: %v", err)
 	}
 	if id1 != id2 {
 		t.Errorf("Expected same ID for same URL, got %s and %s", id1, id2)
 	}
+	if inserted2 {
+		t.Error("Expected inserted=false for duplicate URL")
+	}
 
 	// Тест 3: Создание другого URL
 	url3 := "https://example.org"
-	id3, _, err := shortener.ShortenURL(ctx, url3)
+	id3, inserted3, err := shortener.ShortenURL(ctx, url3)
 	if err != nil {
 		t.Fatalf("Failed to shorten URL: %v", err)
 	}
@@ -150,13 +156,7 @@ func TestURLShortener_ShortenURL(t *testing.T) {
 	if id3 == id1 {
 		t.Error("Expected different ID for different URL")
 	}
-
-	// Тест 4: Проверка уникальности ID
-	shortener.RLockMu()
-	count := len(shortener.store)
-	shortener.RUnlockMu()
-
-	if count != 2 {
-		t.Errorf("Expected 2 URLs in store, got %d", count)
+	if !inserted3 {
+		t.Error("Expected inserted=true for new second URL")
 	}
 }

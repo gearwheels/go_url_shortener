@@ -42,7 +42,7 @@ func newTestRouter(t *testing.T) http.Handler {
 		config.Init("localhost:8888", "http://localhost:8000/", testStoragePath, "postgres://shortener:shortener@localhost:5432/shortener")
 	}
 	if service.Shortener == nil {
-		service.Shortener = service.NewURLShortener()
+		service.Shortener = service.GetService(false, nil)
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -208,6 +208,7 @@ func TestRouterWithMiddleware_Redirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to shorten URL: %v", err)
 	}
+
 
 	req := httptest.NewRequest(http.MethodGet, "/"+id, nil)
 	rr := httptest.NewRecorder()

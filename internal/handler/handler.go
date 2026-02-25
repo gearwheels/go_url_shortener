@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
@@ -50,7 +51,8 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	id, inserted, err := service.Shortener.ShortenURL(r.Context(), originalURL)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error(err.Error())
 		return
 	}
 
@@ -105,7 +107,8 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	id, inserted, err := service.Shortener.ShortenURL(r.Context(), request.URL)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error(err.Error())
 		return
 	}
 
@@ -113,7 +116,8 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	response.Result = shortenedURL
 	resp, err := json.Marshal(response)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error(err.Error())
 		return
 	}
 
@@ -203,17 +207,25 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		id, _, err := service.Shortener.ShortenURL(r.Context(), val.OriginalURL)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			slog.Error(err.Error())
 			return
 		}
-		shortenedURL := fmt.Sprintf("%s%s", config.AppConfig.BaseURL, id)
+		// shortenedURL := fmt.Sprintf("%s%s", config.AppConfig.BaseURL, id)
+		shortenedURL, err := url.JoinPath(config.AppConfig.BaseURL, id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			slog.Error(err.Error())
+			return
+		}
 		response = append(response, schemasshortener.ResponseBatchURLSchema{CorrelationID: val.CorrelationID, ShortURL: shortenedURL})
 		slog.Info("Created short URL: %s for %s", shortenedURL, val.OriginalURL)
 	}
 
 	resp, err := json.Marshal(response)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error(err.Error())
 		return
 	}
 

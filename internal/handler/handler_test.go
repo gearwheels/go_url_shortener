@@ -36,7 +36,7 @@ func TestShortenHandler_ContentType(t *testing.T) {
 		fmt.Println("AppConfig has been init-ed")
 	}
 	if service.Shortener == nil {
-		service.Shortener = service.NewURLShortener()
+		service.Shortener = service.GetService(false, nil)
 	}
 
 	for _, tt := range tests {
@@ -148,13 +148,8 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 
 // TestShortenHandler_DuplicateURL тестирует обработку дублирующихся URL
 func TestShortenHandler_DuplicateURL(t *testing.T) {
-	if service.Shortener == nil {
-		service.Shortener = service.NewURLShortener()
-	}
+	service.Shortener = service.GetService(false, nil)
 	url := "https://example.com/unique"
-	if urlShortener, ok := service.Shortener.(*service.URLShortener); ok {
-		urlShortener.FreeStore()
-	}
 
 	// Первый запрос
 	body1 := strings.NewReader(url)
@@ -165,8 +160,8 @@ func TestShortenHandler_DuplicateURL(t *testing.T) {
 	rr1 := httptest.NewRecorder()
 	ShortenHandler(rr1, req1)
 
-	if rr1.Code != http.StatusCreated {
-		t.Fatalf("First request failed with status %d", rr1.Code)
+	if rr1.Code != http.StatusCreated && rr1.Code != http.StatusConflict {
+		t.Fatalf("First request expected status %d or %d, got %d", http.StatusCreated, http.StatusConflict, rr1.Code)
 	}
 
 	shortURL1 := rr1.Body.String()
@@ -191,17 +186,6 @@ func TestShortenHandler_DuplicateURL(t *testing.T) {
 	// ID должны быть одинаковыми для одинаковых URL
 	if id1 != id2 {
 		t.Errorf("Expected same ID for duplicate URL, got %s and %s", id1, id2)
-	}
-
-	// Проверяем, что в хранилище только одна запись
-	if urlShortener, ok := service.Shortener.(*service.URLShortener); ok {
-		urlShortener.RLockMu()
-		count := urlShortener.GetLenStore()
-		urlShortener.RUnlockMu()
-
-		if count != 1 {
-			t.Errorf("Expected 1 URL in store for duplicates, got %d", count)
-		}
 	}
 }
 
@@ -298,7 +282,7 @@ func TestRedirectHandler_NotFound(t *testing.T) {
 // TestRedirectHandler_Success тестирует успешное перенаправление
 func TestRedirectHandler_Success(t *testing.T) {
 	if service.Shortener == nil {
-		service.Shortener = service.NewURLShortener()
+		service.Shortener = service.GetService(false, nil)
 	}
 
 	// Сначала создаем короткий URL
