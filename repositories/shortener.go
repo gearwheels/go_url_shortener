@@ -234,8 +234,6 @@ func (r *URLShortener) ExtractFromFile() error {
 			r.nextID++
 		}
 		r.mu.Unlock()
-	} else {
-		// empty storage
 	}
 	return nil
 }
