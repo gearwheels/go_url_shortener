@@ -136,25 +136,25 @@ func (r *URLShortener) List(ctx context.Context) ([]URL, error) {
 
 // Вспомогательные методы для тестов и поддержки файла‑хранилища.
 
-func (us *URLShortener) RLockMu() {
-	us.mu.RLock()
+func (r *URLShortener) RLockMu() {
+	r.mu.RLock()
 }
 
-func (us *URLShortener) RUnlockMu() {
-	us.mu.RUnlock()
+func (r *URLShortener) RUnlockMu() {
+	r.mu.RUnlock()
 }
 
-func (us *URLShortener) GetLenStore() int {
-	us.mu.RLock()
-	defer us.mu.RUnlock()
-	return len(us.byID)
+func (r *URLShortener) GetLenStore() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.byID)
 }
 
-func (us *URLShortener) PrintStore() []byte {
-	us.mu.RLock()
-	defer us.mu.RUnlock()
-	flat := make(map[string]string, len(us.byID))
-	for _, u := range us.byID {
+func (r *URLShortener) PrintStore() []byte {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	flat := make(map[string]string, len(r.byID))
+	for _, u := range r.byID {
 		flat[u.ShortURL] = u.URL
 	}
 	jsonStr, err := json.Marshal(flat)
@@ -164,16 +164,16 @@ func (us *URLShortener) PrintStore() []byte {
 	return jsonStr
 }
 
-func (us *URLShortener) FreeStore() {
-	us.mu.Lock()
-	defer us.mu.Unlock()
-	us.nextID = 1
-	us.byID = make(map[int64]URL)
-	us.byURL = make(map[string]int64)
-	us.byShort = make(map[string]int64)
+func (r *URLShortener) FreeStore() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.nextID = 1
+	r.byID = make(map[int64]URL)
+	r.byURL = make(map[string]int64)
+	r.byShort = make(map[string]int64)
 }
 
-func (us *URLShortener) UpdateFile(data string) error {
+func (r *URLShortener) UpdateFile(data string) error {
 	file, err := os.OpenFile(config.AppConfig.PathStoreURL, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		return err
@@ -199,7 +199,7 @@ func (us *URLShortener) UpdateFile(data string) error {
 	return writer.Flush()
 }
 
-func (us *URLShortener) ExtractFromFile() error {
+func (r *URLShortener) ExtractFromFile() error {
 	file, err := os.OpenFile(config.AppConfig.PathStoreURL, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return err
@@ -219,21 +219,21 @@ func (us *URLShortener) ExtractFromFile() error {
 	}
 
 	if len(content.String()) != 0 {
-		us.FreeStore()
+		r.FreeStore()
 		jsonStr := "{" + content.String() + "}"
 		var flat map[string]string
 		if err := json.Unmarshal([]byte(jsonStr), &flat); err != nil {
 			return err
 		}
-		us.mu.Lock()
+		r.mu.Lock()
 		for shortID, originalURL := range flat {
-			u := URL{ID: us.nextID, URL: originalURL, ShortURL: shortID}
-			us.byID[u.ID] = u
-			us.byURL[u.URL] = u.ID
-			us.byShort[u.ShortURL] = u.ID
-			us.nextID++
+			u := URL{ID: r.nextID, URL: originalURL, ShortURL: shortID}
+			r.byID[u.ID] = u
+			r.byURL[u.URL] = u.ID
+			r.byShort[u.ShortURL] = u.ID
+			r.nextID++
 		}
-		us.mu.Unlock()
+		r.mu.Unlock()
 	} else {
 		// empty storage
 	}
