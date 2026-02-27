@@ -74,7 +74,7 @@ func (r *urlPostgresRepository) GetByURL(ctx context.Context, url string) (URL ,
 	return u, nil
 }
 
-func (r *urlPostgresRepository) GetByShortURL (ctx context.Context, shortURL string) (URL , error) {
+func (r *urlPostgresRepository) GetByShortURL(ctx context.Context, shortURL string) (URL , error) {
 	var u URL 
 	query := `SELECT id, url, short_url FROM urls WHERE short_url = $1`
 	err := r.db.GetContext(ctx, &u, query, shortURL )

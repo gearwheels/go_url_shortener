@@ -5,7 +5,13 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"log/slog"
+	"net/url"
+	"strings"
+	"sync"
 
+	"github.com/gearwheels/go_url_shortener/internal/config"
+	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	repo "github.com/gearwheels/go_url_shortener/repositories"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
@@ -16,6 +22,7 @@ import (
 type URLShortenerInterface interface {
 	ShortenURL(ctx context.Context, originalURL string) (string, bool, error)
 	GetOriginalURL(ctx context.Context, id string) (string, error)
+	ShortenURLBatch(ctx context.Context, batchURL []schemasshortener.RequestBatchURLSchema) ([]schemasshortener.ResponseBatchURLSchema, error)
 	GenerateID() string
 }
 
@@ -50,6 +57,59 @@ func (s *shortenerService) ShortenURL(ctx context.Context, originalURL string) (
 		}
 		return "", false, err
 	}
+}
+
+func (s *shortenerService) ShortenURLBatch(ctx context.Context, batchURL []schemasshortener.RequestBatchURLSchema) ([]schemasshortener.ResponseBatchURLSchema, error) {
+	if len(batchURL) == 0 {
+		return []schemasshortener.ResponseBatchURLSchema{}, nil
+	}
+
+	responses := make([]schemasshortener.ResponseBatchURLSchema, len(batchURL))
+	errCh := make(chan error, len(batchURL))
+
+	var wg sync.WaitGroup
+
+	for i, val := range batchURL {
+		wg.Add(1)
+		go func(i int, val schemasshortener.RequestBatchURLSchema) {
+			defer wg.Done()
+
+			original := val.OriginalURL
+			if !strings.HasPrefix(original, "http://") &&
+				!strings.HasPrefix(original, "https://") {
+				original = "http://" + original
+			}
+
+			id, _, err := s.ShortenURL(ctx, original)
+			if err != nil {
+				errCh <- err
+				return
+			}
+
+			shortenedURL, err := url.JoinPath(config.AppConfig.BaseURL, id)
+			if err != nil {
+				errCh <- err
+				return
+			}
+
+			responses[i] = schemasshortener.ResponseBatchURLSchema{
+				CorrelationID: val.CorrelationID,
+				ShortURL:      shortenedURL,
+			}
+			slog.Info("Created short URL: %s for %s", shortenedURL, original)
+		}(i, val)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return responses, nil
 }
 
 func (s *shortenerService) GetOriginalURL(ctx context.Context, id string) (string, error) {
@@ -87,4 +147,3 @@ func GetService(pgExist bool, db interface{}) URLShortenerInterface {
 	_ = mem.ExtractFromFile()
 	return NewShortenerService(mem)
 }
-

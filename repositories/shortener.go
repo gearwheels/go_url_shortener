@@ -180,10 +180,8 @@ func (r *URLShortener) UpdateFile(data string) error {
 	}
 	defer file.Close()
 
-	info, err := os.Stat(config.AppConfig.PathStoreURL)
-	if err != nil {
-		return err
-	}
+	info, _ := os.Stat(config.AppConfig.PathStoreURL)
+
 	writer := bufio.NewWriter(file)
 	if info.Size() != 0 {
 		if err := writer.WriteByte(','); err != nil {
