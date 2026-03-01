@@ -256,3 +256,64 @@ func TestURLPostgresRepository_List(t *testing.T) {
 		}
 	})
 }
+
+func TestURLPostgresRepository_CreateBatch(t *testing.T) {
+	sqlxDB, mock := newTestDB(t)
+	defer sqlxDB.Close()
+
+	repo := NewURLPostgresRepository(sqlxDB)
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		batch := []URL{
+			{URL: "https://example.com/a", ShortURL: "shortA"},
+			{URL: "https://example.com/b", ShortURL: "shortB"},
+		}
+
+		mock.ExpectBegin()
+		mock.ExpectExec(`INSERT INTO urls`).
+			WithArgs("https://example.com/a", "shortA").
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec(`INSERT INTO urls`).
+			WithArgs("https://example.com/b", "shortB").
+			WillReturnResult(sqlmock.NewResult(2, 1))
+		mock.ExpectCommit()
+
+		err := repo.CreateBatch(ctx, batch)
+		if err != nil {
+			t.Errorf("CreateBatch: %v", err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("expectations: %v", err)
+		}
+	})
+
+	t.Run("empty batch", func(t *testing.T) {
+		mock.ExpectBegin()
+		mock.ExpectCommit()
+
+		err := repo.CreateBatch(ctx, []URL{})
+		if err != nil {
+			t.Errorf("CreateBatch(empty): %v", err)
+		}
+	})
+
+	t.Run("rollback on error", func(t *testing.T) {
+		batch := []URL{
+			{URL: "https://example.com/x", ShortURL: "shortX"},
+		}
+		mock.ExpectBegin()
+		mock.ExpectExec(`INSERT INTO urls`).
+			WithArgs("https://example.com/x", "shortX").
+			WillReturnError(sql.ErrConnDone)
+		mock.ExpectRollback()
+
+		err := repo.CreateBatch(ctx, batch)
+		if err == nil {
+			t.Error("CreateBatch expected error")
+		}
+		if err != sql.ErrConnDone {
+			t.Errorf("CreateBatch: expected %v, got %v", sql.ErrConnDone, err)
+		}
+	})
+}

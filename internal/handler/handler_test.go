@@ -13,6 +13,7 @@ import (
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	"github.com/gearwheels/go_url_shortener/internal/service"
+	repo "github.com/gearwheels/go_url_shortener/repositories"
 )
 
 // TestShortenHandler_ContentType тестирует проверку Content-Type
@@ -494,5 +495,55 @@ func TestJSONShortenHandler_ResponseFormat(t *testing.T) {
 	}
 	if !strings.HasPrefix(resp.Result, config.AppConfig.BaseURL) {
 		t.Errorf("Expected result to be short URL starting with base, got %s", resp.Result)
+	}
+}
+
+// TestShortenBatchHandler тестирует батчевое сокращение URL
+func TestShortenBatchHandler(t *testing.T) {
+	if config.AppConfig == nil {
+		config.Init("localhost:8080", "http://localhost:8080/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener")
+	}
+	service.Shortener = service.NewShortenerService(repo.NewRepoShortener())
+
+	body := `[
+		{"correlation_id": "req-1", "original_url": "https://example.com/batch1"},
+		{"correlation_id": "req-2", "original_url": "https://example.com/batch2"}
+	]`
+	req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	ShortenBatchHandler(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("Expected status %d, got %d. Body: %s", http.StatusCreated, rr.Code, rr.Body.String())
+	}
+
+	var resp []schemasshortener.ResponseBatchURLSchema
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Response is not valid JSON: %v", err)
+	}
+	if len(resp) != 2 {
+		t.Fatalf("Expected 2 items in response, got %d", len(resp))
+	}
+
+	ctx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
+	for i, item := range resp {
+		if item.CorrelationID == "" || item.ShortURL == "" {
+			t.Errorf("item[%d]: empty correlation_id or short_url", i)
+		}
+		if !strings.HasPrefix(item.ShortURL, config.AppConfig.BaseURL) {
+			t.Errorf("item[%d]: short_url should start with base: %s", i, item.ShortURL)
+		}
+		id := strings.TrimPrefix(item.ShortURL, config.AppConfig.BaseURL)
+		id = strings.Trim(id, "/")
+		original, err := service.Shortener.GetOriginalURL(ctx, id)
+		if err != nil {
+			t.Errorf("item[%d]: GetOriginalURL(%s): %v", i, id, err)
+		}
+		expected := []string{"https://example.com/batch1", "https://example.com/batch2"}
+		if i < len(expected) && original != expected[i] {
+			t.Errorf("item[%d]: expected original %s, got %s", i, expected[i], original)
+		}
 	}
 }

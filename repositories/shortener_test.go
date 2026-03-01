@@ -67,3 +67,63 @@ func TestInMemoryRepository_CRUD(t *testing.T) {
 		t.Fatalf("List after delete: expected 0, got %d", len(after))
 	}
 }
+
+func TestInMemoryRepository_CreateBatch(t *testing.T) {
+	repo := NewRepoShortener()
+	ctx := context.Background()
+
+	batch := []URL{
+		{URL: "https://example.com/1", ShortURL: "id1"},
+		{URL: "https://example.com/2", ShortURL: "id2"},
+		{URL: "https://example.com/3", ShortURL: "id3"},
+	}
+
+	err := repo.CreateBatch(ctx, batch)
+	if err != nil {
+		t.Fatalf("CreateBatch: %v", err)
+	}
+
+	list, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(list) != 3 {
+		t.Fatalf("List: expected 3, got %d", len(list))
+	}
+
+	for _, u := range list {
+		byShort, err := repo.GetByShortURL(ctx, u.ShortURL)
+		if err != nil {
+			t.Fatalf("GetByShortURL(%s): %v", u.ShortURL, err)
+		}
+		if byShort.URL != u.URL {
+			t.Errorf("GetByShortURL(%s): expected URL %s, got %s", u.ShortURL, u.URL, byShort.URL)
+		}
+		byURL, err := repo.GetByURL(ctx, u.URL)
+		if err != nil {
+			t.Fatalf("GetByURL(%s): %v", u.URL, err)
+		}
+		if byURL.ShortURL != u.ShortURL {
+			t.Errorf("GetByURL(%s): expected ShortURL %s, got %s", u.URL, u.ShortURL, byURL.ShortURL)
+		}
+	}
+}
+
+func TestInMemoryRepository_CreateBatch_Empty(t *testing.T) {
+	repo := NewRepoShortener()
+	ctx := context.Background()
+
+	err := repo.CreateBatch(ctx, nil)
+	if err != nil {
+		t.Fatalf("CreateBatch(nil): %v", err)
+	}
+	err = repo.CreateBatch(ctx, []URL{})
+	if err != nil {
+		t.Fatalf("CreateBatch(empty): %v", err)
+	}
+
+	list, _ := repo.List(ctx)
+	if len(list) != 0 {
+		t.Errorf("expected 0 records, got %d", len(list))
+	}
+}

@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"log/slog"
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
@@ -16,6 +19,60 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 )
+
+var (
+    startPrefix string   // префикс, зависящий от времени запуска
+    counter     uint64   // атомарный счётчик
+)
+
+const (
+    alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" // base62
+    partLen  = 5
+)
+// генерация неповторяющихся строк для батчинга
+// init инициализирует префикс запуска и счётчик
+func init() {
+    nano := time.Now().UnixNano()
+    b := make([]byte, 8)
+    binary.LittleEndian.PutUint64(b, uint64(nano))
+    startPrefix = encodeBase62(uint64(nano))
+    for len(startPrefix) < partLen {
+        startPrefix = "0" + startPrefix
+    }
+    if len(startPrefix) > partLen {
+        startPrefix = startPrefix[:partLen]
+    }
+    counter = 0
+}
+
+func encodeBase62(val uint64) string {
+    if val == 0 {
+        return "0"
+    }
+    const base = uint64(len(alphabet))
+    var buf [32]byte
+    i := len(buf) - 1
+    for val > 0 {
+        buf[i] = alphabet[val%base]
+        val /= base
+        i--
+    }
+    return string(buf[i+1:])
+}
+
+// GenerateUniqueID возвращает уникальную строку длиной 10 символов
+func GenerateUniqueID() string {
+    id := atomic.AddUint64(&counter, 1)
+    countStr := encodeBase62(id)
+    for len(countStr) < partLen {
+        countStr = "0" + countStr
+    }
+    if len(countStr) > partLen {
+        countStr = countStr[:partLen]
+    }
+    return startPrefix + countStr
+}
+
 
 // URLShortenerInterface определяет методы сервиса сокращения URL,
 // которые использует слой handler.
@@ -39,12 +96,12 @@ func NewShortenerService(r repo.ShortenerRepository) URLShortenerInterface {
 }
 
 func (s *shortenerService) GenerateID() string {
-	b := make([]byte, 6)
+	b := make([]byte, 7)
 	_, _ = rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func (s *shortenerService) ShortenURL(ctx context.Context, originalURL string) (string, bool, error) {
+func (s *shortenerService) ShortenURL(ctx context.Context, originalURL string) (string, bool, error) { 
 	for {
 		id := s.GenerateID()
 		shortCode, inserted, err := s.repository.Create(ctx, repo.URL{URL: originalURL, ShortURL: id})
@@ -59,12 +116,14 @@ func (s *shortenerService) ShortenURL(ctx context.Context, originalURL string) (
 	}
 }
 
+
 func (s *shortenerService) ShortenURLBatch(ctx context.Context, batchURL []schemasshortener.RequestBatchURLSchema) ([]schemasshortener.ResponseBatchURLSchema, error) {
 	if len(batchURL) == 0 {
 		return []schemasshortener.ResponseBatchURLSchema{}, nil
 	}
 
 	responses := make([]schemasshortener.ResponseBatchURLSchema, len(batchURL))
+	dbBatch := make([]repo.URL, len(batchURL))
 	errCh := make(chan error, len(batchURL))
 
 	var wg sync.WaitGroup
@@ -80,12 +139,10 @@ func (s *shortenerService) ShortenURLBatch(ctx context.Context, batchURL []schem
 				original = "http://" + original
 			}
 
-			id, _, err := s.ShortenURL(ctx, original)
-			if err != nil {
-				errCh <- err
-				return
-			}
-
+			id := GenerateUniqueID()
+			dbBatch[i] = repo.URL{URL: original, ShortURL: id}
+			
+		
 			shortenedURL, err := url.JoinPath(config.AppConfig.BaseURL, id)
 			if err != nil {
 				errCh <- err
@@ -102,6 +159,10 @@ func (s *shortenerService) ShortenURLBatch(ctx context.Context, batchURL []schem
 
 	wg.Wait()
 	close(errCh)
+	err := s.repository.CreateBatch(ctx, dbBatch)
+	if err != nil {
+		return nil, err
+	}
 
 	for err := range errCh {
 		if err != nil {

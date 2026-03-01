@@ -72,6 +72,25 @@ func (r *URLShortener) Create(ctx context.Context, u URL) (shortCode string, ins
 	return u.ShortURL, true, nil
 }
 
+func (r *URLShortener) CreateBatch(ctx context.Context, uBatch []URL) (err error) {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range uBatch {
+		u := &uBatch[i]
+		u.ID = r.nextID
+		r.nextID++
+
+		r.byID[u.ID] = *u
+		r.byURL[u.URL] = u.ID
+		r.byShort[u.ShortURL] = u.ID
+
+		_ = r.UpdateFile("\"" + u.ShortURL + "\": \"" + u.URL + "\"")
+	}
+	return nil
+}
+
+
 func (r *URLShortener) GetByID(ctx context.Context, id int64) (URL, error) {
 	_ = ctx
 	r.mu.RLock()
