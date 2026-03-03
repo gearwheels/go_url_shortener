@@ -48,9 +48,10 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		originalURL = "http://" + originalURL
 	}
 
-	id, err := service.Shortener.ShortenURL(r.Context(), originalURL)
+	id, inserted, err := service.Shortener.ShortenURL(r.Context(), originalURL)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error("Failed to shorten URL", "error", err)
 		return
 	}
 
@@ -58,7 +59,11 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Location", shortenedURL)
-	w.WriteHeader(http.StatusCreated)
+	if inserted {
+		w.WriteHeader(http.StatusCreated)
+	} else {
+		w.WriteHeader(http.StatusConflict)
+	}
 
 	fmt.Fprint(w, shortenedURL)
 
@@ -99,9 +104,10 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 		request.URL = "http://" + request.URL
 	}
 
-	id, err := service.Shortener.ShortenURL(r.Context(), request.URL)
+	id, inserted, err := service.Shortener.ShortenURL(r.Context(), request.URL)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error("Failed to shorten URL", "error", err)
 		return
 	}
 
@@ -109,12 +115,17 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	response.Result = shortenedURL
 	resp, err := json.Marshal(response)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error("Failed to marshal JSON", "error", err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
+	if inserted {
+		w.WriteHeader(http.StatusCreated)
+	} else {
+		w.WriteHeader(http.StatusConflict)
+	}
 
 	w.Write(resp)
 
@@ -170,7 +181,6 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var buf bytes.Buffer
 	var batchURL []schemasshortener.RequestBatchURLSchema
-	var response []schemasshortener.ResponseBatchURLSchema
 
 	// читаем тело запроса
 	_, err := buf.ReadFrom(r.Body)
@@ -188,24 +198,18 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Batch of URL cannot be empty", http.StatusBadRequest)
 		return
 	}
-	for _, val := range batchURL {
-		if !strings.HasPrefix(val.OriginalURL, "http://") &&
-			!strings.HasPrefix(val.OriginalURL, "https://") {
-			val.OriginalURL = "http://" + val.OriginalURL
-		}
-		id, err := service.Shortener.ShortenURL(r.Context(), val.OriginalURL)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		shortenedURL := fmt.Sprintf("%s%s", config.AppConfig.BaseURL, id)
-		response = append(response, schemasshortener.ResponseBatchURLSchema{CorrelationID: val.CorrelationID, ShortURL: shortenedURL})
-		slog.Info("Created short URL: %s for %s", shortenedURL, val.OriginalURL)
+	
+	response, err := service.Shortener.ShortenURLBatch(r.Context(), batchURL)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error("Failed to shorten URL batch", "error", err)
+		return
 	}
 
 	resp, err := json.Marshal(response)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error("Failed to marshal JSON", "error", err)
 		return
 	}
 

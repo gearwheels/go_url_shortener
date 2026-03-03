@@ -85,13 +85,6 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	}
 	service.Shortener = service.GetService(pgExist, db)
 
-	// Если используется in-memory хранилище, загружаем данные из файла
-	if !pgExist {
-		if urlShortener, ok := service.Shortener.(*service.URLShortener); ok {
-			urlShortener.ExtractFromFile()
-		}
-	}
-	
 	// port := ":8080"
 	fmt.Printf("URL Shortener server starting on %s\n", *a)
 	fmt.Println("\nEndpoints:")
@@ -102,9 +95,6 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	fmt.Println()
 	fmt.Println("  GET /{id} - Redirect to original URL")
 	fmt.Println("    Response: 307 with Location header")
-	if urlShortener, ok := service.Shortener.(*service.URLShortener); ok {
-		fmt.Println(string(urlShortener.PrintStore()))
-	}
 
 	if err := http.ListenAndServe(*a, router); err != nil {
 		slog.Error("Server error:", slog.String("err", err.Error()))
@@ -123,9 +113,8 @@ func runMigrations(db *sql.DB) error {
 	}
 	m, err := migrate.NewWithInstance("iofs", sourceDriver, "postgres", driver)
 	if err != nil {
-		return err
+		return fmt.Errorf("MIGRATION ERROR: %w", err)
 	}
-	// defer m.Close()
 
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return err

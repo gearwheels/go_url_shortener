@@ -1,4 +1,4 @@
-package service
+package repository
 
 import (
 	"context"
@@ -26,29 +26,46 @@ func TestURLPostgresRepository_Create(t *testing.T) {
 	repo := NewURLPostgresRepository(sqlxDB)
 	ctx := context.Background()
 
-	t.Run("success", func(t *testing.T) {
-		mock.ExpectQuery(`INSERT INTO urls \(url, short_url\) VALUES \(\$1, \$2\) RETURNING id`).
+	t.Run("success insert", func(t *testing.T) {
+		mock.ExpectQuery(`INSERT INTO urls`).
 			WithArgs("https://example.com", "abc123").
-			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+			WillReturnRows(sqlmock.NewRows([]string{"short_url", "inserted"}).AddRow("abc123", true))
 
-		err := repo.Create(ctx, URL{
+		shortCode, inserted, err := repo.Create(ctx, URL{
 			URL:      "https://example.com",
 			ShortURL: "abc123",
 		})
 		if err != nil {
 			t.Errorf("Create: %v", err)
 		}
+		if shortCode != "abc123" || !inserted {
+			t.Errorf("Create: shortCode=%q inserted=%v", shortCode, inserted)
+		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("expectations: %v", err)
 		}
 	})
 
+	t.Run("success conflict returns existing", func(t *testing.T) {
+		mock.ExpectQuery(`INSERT INTO urls`).
+			WithArgs("https://example.com", "newid").
+			WillReturnRows(sqlmock.NewRows([]string{"short_url", "inserted"}).AddRow("existing123", false))
+
+		shortCode, inserted, err := repo.Create(ctx, URL{URL: "https://example.com", ShortURL: "newid"})
+		if err != nil {
+			t.Errorf("Create: %v", err)
+		}
+		if shortCode != "existing123" || inserted {
+			t.Errorf("Create: shortCode=%q inserted=%v", shortCode, inserted)
+		}
+	})
+
 	t.Run("error", func(t *testing.T) {
-		mock.ExpectQuery(`INSERT INTO urls \(url, short_url\) VALUES \(\$1, \$2\) RETURNING id`).
+		mock.ExpectQuery(`INSERT INTO urls`).
 			WithArgs("https://bad.com", "x").
 			WillReturnError(sql.ErrConnDone)
 
-		err := repo.Create(ctx, URL{URL: "https://bad.com", ShortURL: "x"})
+		_, _, err := repo.Create(ctx, URL{URL: "https://bad.com", ShortURL: "x"})
 		if err == nil {
 			t.Error("expected error")
 		}
@@ -240,118 +257,63 @@ func TestURLPostgresRepository_List(t *testing.T) {
 	})
 }
 
-func TestURLPostgresRepository_ShortenURL(t *testing.T) {
+func TestURLPostgresRepository_CreateBatch(t *testing.T) {
 	sqlxDB, mock := newTestDB(t)
 	defer sqlxDB.Close()
 
 	repo := NewURLPostgresRepository(sqlxDB)
 	ctx := context.Background()
 
-	t.Run("new url", func(t *testing.T) {
-		originalURL := "https://example.com/new"
-		// GetByURL — не найден
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls WHERE url = \$1`).
-			WithArgs(originalURL).
-			WillReturnError(sql.ErrNoRows)
-		// GetByShortURL в цикле — первый вызов не найден (уникальный short id)
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls WHERE short_url = \$1`).
-			WithArgs(sqlmock.AnyArg()).
-			WillReturnError(sql.ErrNoRows)
-		// Create
-		mock.ExpectQuery(`INSERT INTO urls \(url, short_url\) VALUES \(\$1, \$2\) RETURNING id`).
-			WithArgs(originalURL, sqlmock.AnyArg()).
-			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
-
-		short, err := repo.ShortenURL(ctx, originalURL)
-		if err != nil {
-			t.Errorf("ShortenURL: %v", err)
+	t.Run("success", func(t *testing.T) {
+		batch := []URL{
+			{URL: "https://example.com/a", ShortURL: "shortA"},
+			{URL: "https://example.com/b", ShortURL: "shortB"},
 		}
-		if short == "" {
-			t.Error("expected non-empty short URL")
+
+		mock.ExpectBegin()
+		mock.ExpectExec(`INSERT INTO urls`).
+			WithArgs("https://example.com/a", "shortA").
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectExec(`INSERT INTO urls`).
+			WithArgs("https://example.com/b", "shortB").
+			WillReturnResult(sqlmock.NewResult(2, 1))
+		mock.ExpectCommit()
+
+		err := repo.CreateBatch(ctx, batch)
+		if err != nil {
+			t.Errorf("CreateBatch: %v", err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("expectations: %v", err)
 		}
 	})
 
-	t.Run("duplicate url returns existing short", func(t *testing.T) {
-		originalURL := "https://example.com/dup"
-		existingShort := "existing123"
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls WHERE url = \$1`).
-			WithArgs(originalURL).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "url", "short_url"}).
-				AddRow(1, originalURL, existingShort))
+	t.Run("empty batch", func(t *testing.T) {
+		mock.ExpectBegin()
+		mock.ExpectCommit()
 
-		short, err := repo.ShortenURL(ctx, originalURL)
+		err := repo.CreateBatch(ctx, []URL{})
 		if err != nil {
-			t.Errorf("ShortenURL: %v", err)
-		}
-		if short != existingShort {
-			t.Errorf("expected %q, got %q", existingShort, short)
-		}
-	})
-}
-
-func TestURLPostgresRepository_GetOriginalURL(t *testing.T) {
-	sqlxDB, mock := newTestDB(t)
-	defer sqlxDB.Close()
-
-	repo := NewURLPostgresRepository(sqlxDB)
-	ctx := context.Background()
-
-	t.Run("found", func(t *testing.T) {
-		shortID := "abc123"
-		original := "https://example.com"
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls WHERE short_url = \$1`).
-			WithArgs(shortID).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "url", "short_url"}).
-				AddRow(1, original, shortID))
-
-		got, err := repo.GetOriginalURL(ctx, shortID)
-		if err != nil {
-			t.Errorf("GetOriginalURL: %v", err)
-		}
-		if got != original {
-			t.Errorf("expected %q, got %q", original, got)
+			t.Errorf("CreateBatch(empty): %v", err)
 		}
 	})
 
-	t.Run("not found", func(t *testing.T) {
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls WHERE short_url = \$1`).
-			WithArgs("nonexistent").
-			WillReturnError(sql.ErrNoRows)
-
-		got, err := repo.GetOriginalURL(ctx, "nonexistent")
-		if err != nil {
-			t.Errorf("GetOriginalURL (not found) returned error: %v", err)
+	t.Run("rollback on error", func(t *testing.T) {
+		batch := []URL{
+			{URL: "https://example.com/x", ShortURL: "shortX"},
 		}
-		if got != "" {
-			t.Errorf("expected empty string, got %q", got)
+		mock.ExpectBegin()
+		mock.ExpectExec(`INSERT INTO urls`).
+			WithArgs("https://example.com/x", "shortX").
+			WillReturnError(sql.ErrConnDone)
+		mock.ExpectRollback()
+
+		err := repo.CreateBatch(ctx, batch)
+		if err == nil {
+			t.Error("CreateBatch expected error")
+		}
+		if err != sql.ErrConnDone {
+			t.Errorf("CreateBatch: expected %v, got %v", sql.ErrConnDone, err)
 		}
 	})
-}
-
-func TestURLPostgresRepository_GenerateID(t *testing.T) {
-	sqlxDB, _ := newTestDB(t)
-	defer sqlxDB.Close()
-
-	repo := NewURLPostgresRepository(sqlxDB)
-
-	id := repo.GenerateID()
-	if id == "" {
-		t.Error("GenerateID returned empty string")
-	}
-	// RawURLEncoding produces [A-Za-z0-9_-]
-	for _, c := range id {
-		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
-			continue
-		}
-		t.Errorf("GenerateID returned invalid character %q in %q", c, id)
-	}
-	// Uniqueness in a small sample
-	seen := make(map[string]bool)
-	for i := 0; i < 100; i++ {
-		id := repo.GenerateID()
-		if seen[id] {
-			t.Errorf("duplicate ID %q", id)
-		}
-		seen[id] = true
-	}
 }
