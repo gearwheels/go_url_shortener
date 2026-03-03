@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
+	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
 	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	"github.com/gearwheels/go_url_shortener/internal/service"
 )
@@ -48,7 +49,8 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		originalURL = "http://" + originalURL
 	}
 
-	id, inserted, err := service.Shortener.ShortenURL(r.Context(), originalURL)
+	userID, _ := r.Context().Value(logrequest.UserIDKey).(string)
+	id, inserted, err := service.Shortener.ShortenURL(r.Context(), originalURL, userID)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		slog.Error("Failed to shorten URL", "error", err)
@@ -104,7 +106,8 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 		request.URL = "http://" + request.URL
 	}
 
-	id, inserted, err := service.Shortener.ShortenURL(r.Context(), request.URL)
+	userID, _ := r.Context().Value(logrequest.UserIDKey).(string)
+	id, inserted, err := service.Shortener.ShortenURL(r.Context(), request.URL, userID)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		slog.Error("Failed to shorten URL", "error", err)
@@ -199,7 +202,8 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	response, err := service.Shortener.ShortenURLBatch(r.Context(), batchURL)
+	userID, _ := r.Context().Value(logrequest.UserIDKey).(string)
+	response, err := service.Shortener.ShortenURLBatch(r.Context(), batchURL, userID)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		slog.Error("Failed to shorten URL batch", "error", err)
@@ -221,9 +225,15 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 
 
 
+// userURLItem — элемент ответа GET /api/user/urls (short_url, original_url)
+type userURLItem struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
 func UserURL(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	userID, ok := ctx.Value("userID").(string)
+	userID, ok := ctx.Value(logrequest.UserIDKey).(string)
 	if !ok || userID == "" {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -235,7 +245,20 @@ func UserURL(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Failed to get all users short url", "error", err)
 		return
 	}
-	resp, err := json.Marshal(userURLs)
+
+	if len(userURLs) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	items := make([]userURLItem, 0, len(userURLs))
+	for _, u := range userURLs {
+		items = append(items, userURLItem{
+			ShortURL:    fmt.Sprintf("%s%s", config.AppConfig.BaseURL, u.ShortURL),
+			OriginalURL: u.URL,
+		})
+	}
+	resp, err := json.Marshal(items)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		slog.Error("Failed to marshal JSON", "error", err)
@@ -243,6 +266,6 @@ func UserURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(http.StatusOK)
 	w.Write(resp)
 }

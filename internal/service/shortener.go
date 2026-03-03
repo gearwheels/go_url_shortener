@@ -77,9 +77,9 @@ func GenerateUniqueID() string {
 // URLShortenerInterface определяет методы сервиса сокращения URL,
 // которые использует слой handler.
 type URLShortenerInterface interface {
-	ShortenURL(ctx context.Context, originalURL string) (string, bool, error)
+	ShortenURL(ctx context.Context, originalURL string, userID string) (string, bool, error)
 	GetOriginalURL(ctx context.Context, id string) (string, error)
-	ShortenURLBatch(ctx context.Context, batchURL []schemasshortener.RequestBatchURLSchema) ([]schemasshortener.ResponseBatchURLSchema, error)
+	ShortenURLBatch(ctx context.Context, batchURL []schemasshortener.RequestBatchURLSchema, userID string) ([]schemasshortener.ResponseBatchURLSchema, error)
 	GenerateID() string
 	GetAllShortenerURL(ctx context.Context, userID string) ([]repo.URL, error)
 }
@@ -102,10 +102,10 @@ func (s *shortenerService) GenerateID() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func (s *shortenerService) ShortenURL(ctx context.Context, originalURL string) (string, bool, error) { 
+func (s *shortenerService) ShortenURL(ctx context.Context, originalURL string, userID string) (string, bool, error) {
 	for {
 		id := s.GenerateID()
-		shortCode, inserted, err := s.repository.Create(ctx, repo.URL{URL: originalURL, ShortURL: id})
+		shortCode, inserted, err := s.repository.Create(ctx, repo.URL{URL: originalURL, ShortURL: id, UserID: userID})
 		if err == nil {
 			return shortCode, inserted, nil
 		}
@@ -126,7 +126,7 @@ func (s *shortenerService) GetAllShortenerURL(ctx context.Context, userID string
 }
 
 
-func (s *shortenerService) ShortenURLBatch(ctx context.Context, batchURL []schemasshortener.RequestBatchURLSchema) ([]schemasshortener.ResponseBatchURLSchema, error) {
+func (s *shortenerService) ShortenURLBatch(ctx context.Context, batchURL []schemasshortener.RequestBatchURLSchema, userID string) ([]schemasshortener.ResponseBatchURLSchema, error) {
 	if len(batchURL) == 0 {
 		return []schemasshortener.ResponseBatchURLSchema{}, nil
 	}
@@ -149,7 +149,7 @@ func (s *shortenerService) ShortenURLBatch(ctx context.Context, batchURL []schem
 			}
 
 			id := GenerateUniqueID()
-			dbBatch[i] = repo.URL{URL: original, ShortURL: id}
+			dbBatch[i] = repo.URL{URL: original, ShortURL: id, UserID: userID}
 			
 		
 			shortenedURL, err := url.JoinPath(config.AppConfig.BaseURL, id)

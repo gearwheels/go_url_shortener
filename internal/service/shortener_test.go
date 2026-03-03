@@ -61,7 +61,7 @@ func TestConcurrentAccess(t *testing.T) {
 		go func(index int) {
 			defer wg.Done()
 			url := fmt.Sprintf("https://example.com/page%d", index)
-			id, inserted, err := shortener.ShortenURL(ctx, url)
+			id, inserted, err := shortener.ShortenURL(ctx, url, "")
 			if err != nil {
 				t.Errorf("Failed to shorten URL: %v", err)
 				return
@@ -92,7 +92,7 @@ func TestURLShortener_GetOriginalURL(t *testing.T) {
 
 	// Тест 2: Получение существующего URL
 	testURL := "https://example.com"
-	id, _, err := shortener.ShortenURL(ctx, testURL)
+	id, _, err := shortener.ShortenURL(ctx, testURL, "")
 	if err != nil {
 		t.Fatalf("Failed to shorten URL: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestURLShortener_ShortenURL(t *testing.T) {
 
 	// Тест 1: Создание нового URL
 	url1 := "https://example.com"
-	id1, inserted1, err := shortener.ShortenURL(ctx, url1)
+	id1, inserted1, err := shortener.ShortenURL(ctx, url1, "")
 	if err != nil {
 		t.Fatalf("Failed to shorten URL: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestURLShortener_ShortenURL(t *testing.T) {
 	}
 
 	// Тест 2: Попытка сократить тот же URL должна вернуть тот же ID
-	id2, inserted2, err := shortener.ShortenURL(ctx, url1)
+	id2, inserted2, err := shortener.ShortenURL(ctx, url1, "")
 	if err != nil {
 		t.Fatalf("Failed to shorten URL: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestURLShortener_ShortenURL(t *testing.T) {
 
 	// Тест 3: Создание другого URL
 	url3 := "https://example.org"
-	id3, inserted3, err := shortener.ShortenURL(ctx, url3)
+	id3, inserted3, err := shortener.ShortenURL(ctx, url3, "")
 	if err != nil {
 		t.Fatalf("Failed to shorten URL: %v", err)
 	}

@@ -38,13 +38,13 @@ func NewURLPostgresRepository(db *sqlx.DB) *urlPostgresRepository {
 
 func (r *urlPostgresRepository) Create(ctx context.Context, u URL) (shortCode string, inserted bool, err error) {
 	query := `
-	INSERT INTO urls (url, short_url)
-	VALUES ($1, $2)
+	INSERT INTO urls (url, short_url, user_id)
+	VALUES ($1, $2, $3)
 	ON CONFLICT (url) DO UPDATE
 		SET url = EXCLUDED.url
 	RETURNING short_url, (xmax = 0) AS inserted
 	`
-	err = r.db.QueryRowContext(ctx, query, u.URL, u.ShortURL).Scan(&shortCode, &inserted)
+	err = r.db.QueryRowContext(ctx, query, u.URL, u.ShortURL, u.UserID).Scan(&shortCode, &inserted)
 	if err != nil {
 		return "", false, err
 	}
@@ -68,14 +68,14 @@ func (r *urlPostgresRepository) CreateBatch(ctx context.Context, URLBatch []URL)
 		return err
 	}
 	query := `
-	INSERT INTO urls (url, short_url)
-	VALUES ($1, $2)
+	INSERT INTO urls (url, short_url, user_id)
+	VALUES ($1, $2, $3)
 	ON CONFLICT (url) DO UPDATE
 		SET url = EXCLUDED.url
 	RETURNING short_url, (xmax = 0) AS inserted
 	`
 	for _, u := range URLBatch {
-		_, err = tx.ExecContext(ctx, query, u.URL, u.ShortURL)
+		_, err = tx.ExecContext(ctx, query, u.URL, u.ShortURL, u.UserID)
 		if err != nil {
 			tx.Rollback()
 			return err

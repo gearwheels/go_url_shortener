@@ -18,7 +18,11 @@ const (
     cookieMaxAge = 30 * 24 * time.Hour // 30 дней
 )
 
+type contextKey string
 
+const (
+    UserIDKey contextKey = "userID"
+)
 
 // signData создаёт HMAC-SHA256 подпись для данных
 func signData(data string) string {
@@ -101,7 +105,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
         }
 
         // Кладём userID в контекст
-        ctx := context.WithValue(r.Context(), "userID", userID)
+        ctx := context.WithValue(r.Context(), UserIDKey, userID)
         next.ServeHTTP(w, r.WithContext(ctx))
     })
 }
