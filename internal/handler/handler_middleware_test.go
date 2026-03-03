@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -39,6 +40,9 @@ func newTestRouter(t *testing.T) http.Handler {
 	t.Helper()
 	if config.AppConfig == nil {
 		config.Init("localhost:8888", "http://localhost:8000/", testStoragePath, "postgres://shortener:shortener@localhost:5432/shortener")
+	}
+	if service.Shortener == nil {
+		service.Shortener = service.NewURLShortener()
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -81,9 +85,10 @@ func TestRouterWithMiddleware_ShortenTextPlain(t *testing.T) {
 	}
 
 	id := strings.TrimPrefix(body, config.AppConfig.BaseURL)
-	original, exists := service.Shortener.GetOriginalURL(id)
-	if !exists {
-		t.Error("Expected URL to be stored")
+	ctx := context.Background()
+	original, err := service.Shortener.GetOriginalURL(ctx, id)
+	if err != nil {
+		t.Errorf("Expected URL to be stored, got error: %v", err)
 	}
 	if original != url {
 		t.Errorf("Expected stored URL %s, got %s", url, original)
@@ -198,7 +203,11 @@ func gzipBytes(t *testing.T, data []byte) []byte {
 func TestRouterWithMiddleware_Redirect(t *testing.T) {
 	router := newTestRouter(t)
 	originalURL := "https://example.com/redirect-middleware"
-	id := service.Shortener.ShortenURL(originalURL)
+	ctx := context.Background()
+	id, err := service.Shortener.ShortenURL(ctx, originalURL)
+	if err != nil {
+		t.Fatalf("Failed to shorten URL: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/"+id, nil)
 	rr := httptest.NewRecorder()

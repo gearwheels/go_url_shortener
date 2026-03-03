@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,6 +34,9 @@ func TestShortenHandler_ContentType(t *testing.T) {
 		config.Init("localhost:8888", "http://localhost:8000/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener")
 	} else {
 		fmt.Println("AppConfig has been init-ed")
+	}
+	if service.Shortener == nil {
+		service.Shortener = service.NewURLShortener()
 	}
 
 	for _, tt := range tests {
@@ -120,10 +124,11 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 			// Извлекаем ID из ответа
 			id := strings.TrimPrefix(responseBody, config.AppConfig.BaseURL)
 			// Проверяем, что URL сохранен правильно
-			storedURL, exists := service.Shortener.GetOriginalURL(id)
+			reqCtx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
+			storedURL, err := service.Shortener.GetOriginalURL(reqCtx, id)
 
-			if !exists {
-				t.Error("Expected URL to be stored")
+			if err != nil {
+				t.Errorf("Expected URL to be stored, got error: %v", err)
 			}
 
 			if storedURL != tc.expected {
@@ -135,8 +140,13 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 
 // TestShortenHandler_DuplicateURL тестирует обработку дублирующихся URL
 func TestShortenHandler_DuplicateURL(t *testing.T) {
+	if service.Shortener == nil {
+		service.Shortener = service.NewURLShortener()
+	}
 	url := "https://example.com/unique"
-	service.Shortener.FreeStore()
+	if urlShortener, ok := service.Shortener.(*service.URLShortener); ok {
+		urlShortener.FreeStore()
+	}
 
 	// Первый запрос
 	body1 := strings.NewReader(url)
@@ -176,12 +186,14 @@ func TestShortenHandler_DuplicateURL(t *testing.T) {
 	}
 
 	// Проверяем, что в хранилище только одна запись
-	service.Shortener.RLockMu()
-	count := service.Shortener.GetLenStore()
-	service.Shortener.RUnlockMu()
+	if urlShortener, ok := service.Shortener.(*service.URLShortener); ok {
+		urlShortener.RLockMu()
+		count := urlShortener.GetLenStore()
+		urlShortener.RUnlockMu()
 
-	if count != 1 {
-		t.Errorf("Expected 1 URL in store for duplicates, got %d", count)
+		if count != 1 {
+			t.Errorf("Expected 1 URL in store for duplicates, got %d", count)
+		}
 	}
 }
 
@@ -277,10 +289,17 @@ func TestRedirectHandler_NotFound(t *testing.T) {
 
 // TestRedirectHandler_Success тестирует успешное перенаправление
 func TestRedirectHandler_Success(t *testing.T) {
+	if service.Shortener == nil {
+		service.Shortener = service.NewURLShortener()
+	}
 
 	// Сначала создаем короткий URL
 	originalURL := "https://example.com/redirect-test"
-	id := service.Shortener.ShortenURL(originalURL)
+	ctx := context.Background()
+	id, err := service.Shortener.ShortenURL(ctx, originalURL)
+	if err != nil {
+		t.Fatalf("Failed to shorten URL: %v", err)
+	}
 
 	// Тестируем перенаправление
 	req := httptest.NewRequest(http.MethodGet, "/"+id, nil)
@@ -439,9 +458,10 @@ func TestJSONShortenHandler_ValidURL(t *testing.T) {
 			}
 
 			id := strings.TrimPrefix(resp.Result, config.AppConfig.BaseURL)
-			storedURL, exists := service.Shortener.GetOriginalURL(id)
-			if !exists {
-				t.Error("Expected URL to be stored")
+			reqCtx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
+			storedURL, err := service.Shortener.GetOriginalURL(reqCtx, id)
+			if err != nil {
+				t.Errorf("Expected URL to be stored, got error: %v", err)
 			}
 			if storedURL != tc.expected {
 				t.Errorf("Expected stored URL %s, got %s", tc.expected, storedURL)
