@@ -38,7 +38,7 @@ func init() {
 func newTestRouter(t *testing.T) http.Handler {
 	t.Helper()
 	if config.AppConfig == nil {
-		config.Init("localhost:8888", "http://localhost:8000/", testStoragePath)
+		config.Init("localhost:8888", "http://localhost:8000/", testStoragePath, "postgres://shortener:shortener@localhost:5432/shortener")
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{

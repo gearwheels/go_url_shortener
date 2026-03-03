@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -112,7 +113,7 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Created short URL: %s for %s", shortenedURL, request.URL)
 }
 
-func RedirectHandler(w http.ResponseWriter, r *http.Request) {
+func RedirectHandler(w http.ResponseWriter, r *http.Request) { 
 
 	// Извлекаем ID из пути (убираем ведущий слэш)
 	id := strings.TrimPrefix(r.URL.Path, "/")
@@ -133,4 +134,28 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 
 	slog.Info("Redirecting %s -> %s", id, originalURL)
+}
+
+
+func CheckDBStatus(w http.ResponseWriter, r *http.Request) { 
+
+	db, err := sql.Open("pgx", config.AppConfig.DatabaseDsn)
+    if err != nil {
+        slog.Error("Ошибка открытия соединения: " + err.Error())
+    }
+    defer db.Close()
+
+	err = db.Ping()
+	if err != nil {
+		http.Error(w, "Short URL not found", http.StatusInternalServerError)
+		return
+	}else{
+		w.WriteHeader(http.StatusOK)
+		slog.Info("Data base alive!")
+		return
+	}
+
+
+
+	
 }
