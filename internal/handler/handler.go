@@ -67,7 +67,7 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprint(w, shortenedURL)
 
-	slog.Info("Created short URL: %s for %s", shortenedURL, originalURL)
+	slog.Info("Created short URL", "short_url", shortenedURL, "original", originalURL)
 }
 
 func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +129,7 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Write(resp)
 
-	slog.Info("Created short URL: %s for %s", shortenedURL, request.URL)
+	slog.Info("Created short URL", "short_url", shortenedURL, "original", request.URL)
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request) {
@@ -150,14 +150,14 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Location", originalURL)
 	w.WriteHeader(http.StatusTemporaryRedirect)
 
-	slog.Info("Redirecting %s -> %s", id, originalURL)
+	slog.Info("Redirecting", "id", id, "location", originalURL)
 }
 
 func CheckDBStatus(w http.ResponseWriter, r *http.Request) {
 
 	db, err := sql.Open("pgx", config.AppConfig.DatabaseDsn)
 	if err != nil {
-		slog.Error("Ошибка открытия соединения: " + err.Error())
+		slog.Error("Ошибка открытия соединения", "error", err)
 	}
 	defer db.Close()
 
@@ -222,9 +222,12 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 
 
 func UserURL(w http.ResponseWriter, r *http.Request) {
-	// cookie, err := r.Cookie()
 	ctx := r.Context()
-	userID, err := ctx.Value("userID").(string)
+	userID, ok := ctx.Value("userID").(string)
+	if !ok || userID == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	userURLs, err := service.Shortener.GetAllShortenerURL(ctx, userID)
 	if err != nil {

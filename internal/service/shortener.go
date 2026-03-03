@@ -162,7 +162,7 @@ func (s *shortenerService) ShortenURLBatch(ctx context.Context, batchURL []schem
 				CorrelationID: val.CorrelationID,
 				ShortURL:      shortenedURL,
 			}
-			slog.Info("Created short URL: %s for %s", shortenedURL, original)
+			slog.Info("Created short URL", "short_url", shortenedURL, "original", original)
 		}(i, val)
 	}
 

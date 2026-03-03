@@ -154,6 +154,27 @@ func (r *URLShortener) List(ctx context.Context) ([]URL, error) {
 	return out, nil
 }
 
+func (r *URLShortener) GetListURLByUserID(ctx context.Context, userID string) ([]URL, error) {
+	_ = ctx
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	ids := make([]int64, 0, len(r.byID))
+	for id := range r.byID {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	out := make([]URL, 0)
+	for _, id := range ids {
+		u := r.byID[id]
+		if u.UserID == userID {
+			out = append(out, u)
+		}
+	}
+	return out, nil
+}
+
 // Вспомогательные методы для тестов и поддержки файла‑хранилища.
 
 func (r *URLShortener) RLockMu() {

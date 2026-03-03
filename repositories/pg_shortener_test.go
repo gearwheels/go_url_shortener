@@ -223,10 +223,10 @@ func TestURLPostgresRepository_List(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls ORDER BY id`).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "url", "short_url"}).
-				AddRow(1, "https://a.com", "id1").
-				AddRow(2, "https://b.com", "id2"))
+		mock.ExpectQuery(`SELECT id, url, short_url, user_id FROM urls ORDER BY id`).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "url", "short_url", "user_id"}).
+				AddRow(1, "https://a.com", "id1", "").
+				AddRow(2, "https://b.com", "id2", ""))
 
 		list, err := repo.List(ctx)
 		if err != nil {
@@ -244,8 +244,8 @@ func TestURLPostgresRepository_List(t *testing.T) {
 	})
 
 	t.Run("empty", func(t *testing.T) {
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls ORDER BY id`).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "url", "short_url"}))
+		mock.ExpectQuery(`SELECT id, url, short_url, user_id FROM urls ORDER BY id`).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "url", "short_url", "user_id"}))
 
 		list, err := repo.List(ctx)
 		if err != nil {

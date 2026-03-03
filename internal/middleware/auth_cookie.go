@@ -1,6 +1,16 @@
 package logrequest
 
-import "net/http"
+import (
+	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+)
 
 const (
     cookieName   = "auth"          // имя cookie
@@ -31,9 +41,16 @@ func validateCookie(cookieValue string) (string, bool) {
     return userID, true
 }
 
-// generateUserID создаёт новый UUID
+// generateUserID создаёт новый UUID v4 (16 random bytes, hex-encoded as 32 chars + hyphens)
 func generateUserID() string {
-    return uuid.New().String()
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 // setAuthCookie создаёт и устанавливает cookie с подписанным userID
