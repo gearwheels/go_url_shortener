@@ -24,6 +24,7 @@ type URLShortener struct {
 	byID    map[int64]URL
 	byURL   map[string]int64
 	byShort map[string]int64
+	UserID  map[string]int64
 }
 
 func NewRepoShortener() *URLShortener {

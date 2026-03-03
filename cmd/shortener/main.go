@@ -63,6 +63,7 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	router.Post("/api/shorten", handler.JSONShortenHandler)
 	router.Get("/{id}", handler.RedirectHandler)
 	router.Get("/ping", handler.CheckDBStatus)
+	router.Get("/api/user/urls", handler.UserURL)
 	router.Post("/api/shorten/batch", handler.ShortenBatchHandler)
 
 	// Инициализация сервиса в зависимости от наличия базы данных

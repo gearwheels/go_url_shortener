@@ -81,6 +81,7 @@ type URLShortenerInterface interface {
 	GetOriginalURL(ctx context.Context, id string) (string, error)
 	ShortenURLBatch(ctx context.Context, batchURL []schemasshortener.RequestBatchURLSchema) ([]schemasshortener.ResponseBatchURLSchema, error)
 	GenerateID() string
+	GetAllShortenerURL(ctx context.Context, userID string) ([]repo.URL, error)
 }
 
 // Shortener — глобальный сервис, который используют handler'ы.
@@ -114,6 +115,14 @@ func (s *shortenerService) ShortenURL(ctx context.Context, originalURL string) (
 		}
 		return "", false, err
 	}
+}
+
+func (s *shortenerService) GetAllShortenerURL(ctx context.Context, userID string) ([]repo.URL, error) { 
+	shortCode, err := s.repository.GetListURLByUserID(ctx, userID)
+	if err == nil {
+		return shortCode, nil
+	}
+	return []repo.URL{}, err
 }
 
 

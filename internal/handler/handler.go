@@ -218,3 +218,28 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Write(resp)
 }
+
+
+
+func UserURL(w http.ResponseWriter, r *http.Request) {
+	// cookie, err := r.Cookie()
+	ctx := r.Context()
+	userID, err := ctx.Value("userID").(string)
+
+	userURLs, err := service.Shortener.GetAllShortenerURL(ctx, userID)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error("Failed to get all users short url", "error", err)
+		return
+	}
+	resp, err := json.Marshal(userURLs)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error("Failed to marshal JSON", "error", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	w.Write(resp)
+}
