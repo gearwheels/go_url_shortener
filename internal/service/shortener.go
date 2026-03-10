@@ -78,12 +78,10 @@ func GenerateUniqueID() string {
 // которые использует слой handler.
 type URLShortenerInterface interface {
 	ShortenURL(ctx context.Context, originalURL string, userID string) (string, bool, error)
-	GetOriginalURL(ctx context.Context, id string) (string, bool, error)
+	GetOriginalURL(ctx context.Context, id string) (string, error)
 	ShortenURLBatch(ctx context.Context, batchURL []schemasshortener.RequestBatchURLSchema, userID string) ([]schemasshortener.ResponseBatchURLSchema, error)
 	GenerateID() string
 	GetAllShortenerURL(ctx context.Context, userID string) ([]repo.URL, error)
-	DeleteBatch(ctx context.Context, userID string, listID []string) (error)
-	WorkerDeleteFromURLTable(tasks <-chan schemasshortener.Task, wg *sync.WaitGroup)
 }
 
 // Shortener — глобальный сервис, который используют handler'ы.
@@ -184,36 +182,15 @@ func (s *shortenerService) ShortenURLBatch(ctx context.Context, batchURL []schem
 	return responses, nil
 }
 
-func (s *shortenerService) GetOriginalURL(ctx context.Context, id string) (string, bool, error) {
+func (s *shortenerService) GetOriginalURL(ctx context.Context, id string) (string, error) {
 	u, err := s.repository.GetByShortURL(ctx, id)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if u.URL == "" {
-		return "", false, errors.New("short URL not found")
+		return "", errors.New("short URL not found")
 	}
-	return u.URL, u.DeletedFlag, nil
-}
-
-func (s *shortenerService) DeleteBatch(ctx context.Context, userID string, listID []string) error {
-	if len(listID) == 0 {
-		return nil
-	}
-	return s.repository.UpdateIsDelete(ctx, userID, listID)
-}
-
-func (s *shortenerService) WorkerDeleteFromURLTable(tasks <-chan schemasshortener.Task, wg *sync.WaitGroup) {
-    defer wg.Done()
-    for {
-        select {
-        case task, ok := <-tasks:
-            if !ok {
-                // Канал закрыт, новых задач не будет
-                return
-            }
-            s.repository.Delete()
-        }
-    }
+	return u.URL, nil
 }
 
 func isUniqueViolation(err error) bool {
@@ -240,5 +217,3 @@ func GetService(pgExist bool, db interface{}) URLShortenerInterface {
 	_ = mem.ExtractFromFile()
 	return NewShortenerService(mem)
 }
-
-

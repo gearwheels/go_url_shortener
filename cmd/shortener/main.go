@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -19,7 +18,6 @@ import (
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
-	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	service "github.com/gearwheels/go_url_shortener/internal/service"
 	"github.com/gearwheels/go_url_shortener/migrations"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -57,7 +55,6 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	// разбор командной строки
 	flag.Parse()
 	config.Init(*a, *b, *f, *d)
-	tasksDelCh := make(chan schemasshortener.Task, 20)
 
 	// Наш middleware для логирования
 	router.Use(logrequest.RequestLogger(logger))
@@ -68,11 +65,7 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	router.Get("/{id}", handler.RedirectHandler)
 	router.Get("/ping", handler.CheckDBStatus)
 	router.Get("/api/user/urls", handler.UserURL)
-	router.Delete("/api/user/urls", handler.DeleteBatch(tasksDelCh))
-
-	var wg sync.WaitGroup
-    wg.Add(1)
-	service.WorkerDeleteFromURLTable(tasksChan, &wg)
+	router.Post("/api/shorten/batch", handler.ShortenBatchHandler)
 
 	// Инициализация сервиса в зависимости от наличия базы данных
 	pgExist := config.AppConfig.DatabaseDsn != ""

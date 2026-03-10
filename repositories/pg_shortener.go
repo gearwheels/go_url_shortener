@@ -9,11 +9,10 @@ import (
 )
 
 type URL struct {
-	ID          int64  `db:"id"`
-	URL         string `db:"url"`
-	ShortURL    string `db:"short_url"`
-	UserID      string `db:"user_id"`
-	DeletedFlag bool   `db:"is_deleted"`
+	ID       int64  `db:"id"`
+	URL      string `db:"url"`
+	ShortURL string `db:"short_url"`
+	UserID   string `db:"user_id"`
 }
 
 type ShortenerRepository interface {
@@ -25,7 +24,6 @@ type ShortenerRepository interface {
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context) ([]URL, error)
 	GetListURLByUserID(ctx context.Context, userID string) ([]URL, error)
-	UpdateIsDelete(ctx context.Context, userID string, shortIDs []string) error
 }
 
 type urlPostgresRepository struct {
@@ -115,7 +113,7 @@ func (r *urlPostgresRepository) GetByURL(ctx context.Context, url string) (URL, 
 
 func (r *urlPostgresRepository) GetByShortURL(ctx context.Context, shortURL string) (URL, error) {
 	var u URL
-	query := `SELECT id, url, short_url, is_deleted FROM urls WHERE short_url = $1`
+	query := `SELECT id, url, short_url FROM urls WHERE short_url = $1`
 	err := r.db.GetContext(ctx, &u, query, shortURL)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -139,52 +137,9 @@ func (r *urlPostgresRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *urlPostgresRepository) DeleteByShortURL(ctx context.Context, user_id string, shortURL string) error {
-	query := `DELETE FROM urls WHERE user_id = $1 and short_url = $2`
-	result, err := r.db.ExecContext(ctx, query, user_id, shortURL)
-	if err != nil {
-		return err
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return sql.ErrNoRows
-	}
-	return nil
-}
-
-
 func (r *urlPostgresRepository) List(ctx context.Context) ([]URL, error) {
 	var list []URL
 	query := `SELECT id, url, short_url, user_id FROM urls ORDER BY id`
 	err := r.db.SelectContext(ctx, &list, query)
 	return list, err
-}
-
-// Update устанавливает флаг is_deleted для набора short_url конкретного пользователя.
-func (r *urlPostgresRepository) UpdateIsDelete(ctx context.Context, userID string, shortIDs []string) error {
-	if len(shortIDs) == 0 {
-		return nil
-	}
-
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
-	}
-
-	query := `
-		UPDATE urls
-		SET is_deleted = TRUE
-		WHERE user_id = $1
-		  AND short_url = $2
-	`
-
-	for _, shortID := range shortIDs {
-		_, err = tx.ExecContext(ctx, query, userID, shortID)
-		if err != nil {
-			tx.Rollback()
-			return err
-		}
-	}
-
-	return tx.Commit()
 }
