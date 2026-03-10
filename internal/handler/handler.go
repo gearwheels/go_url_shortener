@@ -271,6 +271,12 @@ func UserURL(w http.ResponseWriter, r *http.Request) {
 	w.Write(resp)
 }
 
+func DeleteBatchHandler(tasksChan chan<- schemasshortener.Task) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		DeleteBatch(w, r, tasksChan)
+	}
+}
+
 func DeleteBatch(w http.ResponseWriter, r *http.Request, tasksChan chan<- schemasshortener.Task) {
 	ctx := r.Context()
 	userID, ok := ctx.Value(logrequest.UserIDKey).(string)

@@ -156,10 +156,10 @@ func TestURLPostgresRepository_GetByShortURL(t *testing.T) {
 
 	t.Run("found", func(t *testing.T) {
 		shortURL := "abc123"
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls WHERE short_url = \$1`).
+		mock.ExpectQuery(`SELECT id, url, short_url, is_deleted FROM urls WHERE short_url = \$1`).
 			WithArgs(shortURL).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "url", "short_url"}).
-				AddRow(1, "https://example.com", shortURL))
+			WillReturnRows(sqlmock.NewRows([]string{"id", "url", "short_url", "is_deleted"}).
+				AddRow(1, "https://example.com", shortURL, false))
 
 		u, err := repo.GetByShortURL(ctx, shortURL)
 		if err != nil {
@@ -171,7 +171,7 @@ func TestURLPostgresRepository_GetByShortURL(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls WHERE short_url = \$1`).
+		mock.ExpectQuery(`SELECT id, url, short_url, is_deleted FROM urls WHERE short_url = \$1`).
 			WithArgs("nonexistent").
 			WillReturnError(sql.ErrNoRows)
 

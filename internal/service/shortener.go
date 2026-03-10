@@ -203,17 +203,12 @@ func (s *shortenerService) DeleteBatch(ctx context.Context, userID string, listI
 }
 
 func (s *shortenerService) WorkerDeleteFromURLTable(tasks <-chan schemasshortener.Task, wg *sync.WaitGroup) {
-    defer wg.Done()
-    for {
-        select {
-        case task, ok := <-tasks:
-            if !ok {
-                // Канал закрыт, новых задач не будет
-                return
-            }
-            s.repository.Delete()
-        }
-    }
+	defer wg.Done()
+	for task := range tasks {
+		if err := s.repository.UpdateIsDelete(context.Background(), task.UserID, []string{task.Data}); err != nil {
+			slog.Error("WorkerDeleteFromURLTable: UpdateIsDelete failed", "user_id", task.UserID, "short_id", task.Data, "error", err)
+		}
+	}
 }
 
 func isUniqueViolation(err error) bool {
