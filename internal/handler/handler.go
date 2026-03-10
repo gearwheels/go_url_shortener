@@ -144,14 +144,18 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	originalURL, err := service.Shortener.GetOriginalURL(r.Context(), id)
+	originalURL, delFlag, err := service.Shortener.GetOriginalURL(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Short URL not found", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Location", originalURL)
-	w.WriteHeader(http.StatusTemporaryRedirect)
+	if delFlag {
+		w.WriteHeader(http.StatusGone)
+	} else {
+		w.WriteHeader(http.StatusTemporaryRedirect)
+	}
 
 	slog.Info("Redirecting", "id", id, "location", originalURL)
 }
@@ -201,7 +205,7 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Batch of URL cannot be empty", http.StatusBadRequest)
 		return
 	}
-	
+
 	userID, _ := r.Context().Value(logrequest.UserIDKey).(string)
 	response, err := service.Shortener.ShortenURLBatch(r.Context(), batchURL, userID)
 	if err != nil {
@@ -223,9 +227,6 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(resp)
 }
 
-
-
-// userURLItem — элемент ответа GET /api/user/urls (short_url, original_url)
 type userURLItem struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
@@ -268,4 +269,46 @@ func UserURL(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(resp)
+}
+
+func DeleteBatch(w http.ResponseWriter, r *http.Request, tasksChan chan<- schemasshortener.Task) {
+	ctx := r.Context()
+	userID, ok := ctx.Value(logrequest.UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var batchID []string
+	var buf bytes.Buffer
+
+	// читаем тело запроса
+	_, err := buf.ReadFrom(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err = json.Unmarshal(buf.Bytes(), &batchID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if len(batchID) == 0 {
+		http.Error(w, "Batch of ID cannot be empty", http.StatusBadRequest)
+		return
+	}
+
+	err = service.Shortener.DeleteBatch(ctx, userID, batchID)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error("Failed to get all users short url", "error", err)
+		return
+	}
+
+	for _, item := range batchID{
+		tasksChan <- schemasshortener.Task{UserID: userID, Data: item}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
 }

@@ -154,6 +154,33 @@ func (r *URLShortener) List(ctx context.Context) ([]URL, error) {
 	return out, nil
 }
 
+// Update помечает записи пользователя как удалённые по списку short_url.
+func (r *URLShortener) UpdateIsDelete(ctx context.Context, userID string, shortIDs []string) error {
+	_ = ctx
+	if len(shortIDs) == 0 {
+		return nil
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	set := make(map[string]struct{}, len(shortIDs))
+	for _, id := range shortIDs {
+		set[id] = struct{}{}
+	}
+
+	for key, u := range r.byID {
+		if u.UserID == userID {
+			if _, ok := set[u.ShortURL]; ok {
+				u.DeletedFlag = true
+				r.byID[key] = u
+			}
+		}
+	}
+
+	return nil
+}
+
 func (r *URLShortener) GetListURLByUserID(ctx context.Context, userID string) ([]URL, error) {
 	_ = ctx
 	r.mu.RLock()
