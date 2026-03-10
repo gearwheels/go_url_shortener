@@ -134,7 +134,7 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 			id := strings.TrimPrefix(responseBody, config.AppConfig.BaseURL)
 			// Проверяем, что URL сохранен правильно
 			reqCtx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
-			storedURL, _, err := service.Shortener.GetOriginalURL(reqCtx, id)
+			storedURL, err := service.Shortener.GetOriginalURL(reqCtx, id)
 
 			if err != nil {
 				t.Errorf("Expected URL to be stored, got error: %v", err)
@@ -460,7 +460,7 @@ func TestJSONShortenHandler_ValidURL(t *testing.T) {
 
 			id := strings.TrimPrefix(resp.Result, config.AppConfig.BaseURL)
 			reqCtx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
-			storedURL, _, err := service.Shortener.GetOriginalURL(reqCtx, id)
+			storedURL, err := service.Shortener.GetOriginalURL(reqCtx, id)
 			if err != nil {
 				t.Errorf("Expected URL to be stored, got error: %v", err)
 			}
@@ -537,7 +537,7 @@ func TestShortenBatchHandler(t *testing.T) {
 		}
 		id := strings.TrimPrefix(item.ShortURL, config.AppConfig.BaseURL)
 		id = strings.Trim(id, "/")
-		original, _, err := service.Shortener.GetOriginalURL(ctx, id)
+		original, err := service.Shortener.GetOriginalURL(ctx, id)
 		if err != nil {
 			t.Errorf("item[%d]: GetOriginalURL(%s): %v", i, id, err)
 		}

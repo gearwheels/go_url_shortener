@@ -59,6 +59,21 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	config.Init(*a, *b, *f, *d)
 	tasksDelCh := make(chan schemasshortener.Task, 20)
 
+	// Наш middleware для логирования
+	router.Use(logrequest.RequestLogger(logger))
+	router.Use(logrequest.RequestDataZip())
+	router.Use(logrequest.AuthMiddleware)
+	router.Post("/", handler.ShortenHandler)
+	router.Post("/api/shorten", handler.JSONShortenHandler)
+	router.Get("/{id}", handler.RedirectHandler)
+	router.Get("/ping", handler.CheckDBStatus)
+	router.Get("/api/user/urls", handler.UserURL)
+	router.Delete("/api/user/urls", handler.DeleteBatch(tasksDelCh))
+
+	var wg sync.WaitGroup
+    wg.Add(1)
+	service.WorkerDeleteFromURLTable(tasksChan, &wg)
+
 	// Инициализация сервиса в зависимости от наличия базы данных
 	pgExist := config.AppConfig.DatabaseDsn != ""
 	var db *sqlx.DB
@@ -78,21 +93,6 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 		}
 	}
 	service.Shortener = service.GetService(pgExist, db)
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go service.Shortener.WorkerDeleteFromURLTable(tasksDelCh, &wg)
-
-	// Наш middleware для логирования
-	router.Use(logrequest.RequestLogger(logger))
-	router.Use(logrequest.RequestDataZip())
-	router.Use(logrequest.AuthMiddleware)
-	router.Post("/", handler.ShortenHandler)
-	router.Post("/api/shorten", handler.JSONShortenHandler)
-	router.Get("/{id}", handler.RedirectHandler)
-	router.Get("/ping", handler.CheckDBStatus)
-	router.Get("/api/user/urls", handler.UserURL)
-	router.Delete("/api/user/urls", handler.DeleteBatchHandler(tasksDelCh))
 
 	// port := ":8080"
 	fmt.Printf("URL Shortener server starting on %s\n", *a)

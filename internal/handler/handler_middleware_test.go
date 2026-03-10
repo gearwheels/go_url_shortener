@@ -86,7 +86,7 @@ func TestRouterWithMiddleware_ShortenTextPlain(t *testing.T) {
 
 	id := strings.TrimPrefix(body, config.AppConfig.BaseURL)
 	ctx := context.Background()
-	original, _, err := service.Shortener.GetOriginalURL(ctx, id)
+	original, err := service.Shortener.GetOriginalURL(ctx, id)
 	if err != nil {
 		t.Errorf("Expected URL to be stored, got error: %v", err)
 	}
