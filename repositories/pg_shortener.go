@@ -139,9 +139,9 @@ func (r *urlPostgresRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *urlPostgresRepository) DeleteByShortURL(ctx context.Context, user_id string, shortURL string) error {
+func (r *urlPostgresRepository) DeleteByShortURL(ctx context.Context, userID string, shortURL string) error {
 	query := `DELETE FROM urls WHERE user_id = $1 and short_url = $2`
-	result, err := r.db.ExecContext(ctx, query, user_id, shortURL)
+	result, err := r.db.ExecContext(ctx, query, userID, shortURL)
 	if err != nil {
 		return err
 	}

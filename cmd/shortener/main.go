@@ -89,6 +89,7 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	router.Use(logrequest.AuthMiddleware)
 	router.Post("/", handler.ShortenHandler)
 	router.Post("/api/shorten", handler.JSONShortenHandler)
+	router.Post("/api/shorten/batch", handler.ShortenBatchHandler)
 	router.Get("/{id}", handler.RedirectHandler)
 	router.Get("/ping", handler.CheckDBStatus)
 	router.Get("/api/user/urls", handler.UserURL)
