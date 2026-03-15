@@ -26,19 +26,20 @@ type ShortenerRepository interface {
 	List(ctx context.Context) ([]URL, error)
 	GetListURLByUserID(ctx context.Context, userID string) ([]URL, error)
 	UpdateIsDelete(ctx context.Context, userID string, shortIDs []string) error
+	DeleteByShortURL(ctx context.Context, userID string, shortURL string) error
 }
 
-type urlPostgresRepository struct {
+type UrlPostgresRepository struct {
 	db *sqlx.DB
 }
 
 // NewURLPostgresRepository возвращает конкретную реализацию репозитория.
 // Репозиторий содержит только методы работы с данными.
-func NewURLPostgresRepository(db *sqlx.DB) *urlPostgresRepository {
-	return &urlPostgresRepository{db: db}
+func NewURLPostgresRepository(db *sqlx.DB) *UrlPostgresRepository {
+	return &UrlPostgresRepository{db: db}
 }
 
-func (r *urlPostgresRepository) Create(ctx context.Context, u URL) (shortCode string, inserted bool, err error) {
+func (r *UrlPostgresRepository) Create(ctx context.Context, u URL) (shortCode string, inserted bool, err error) {
 	query := `
 	INSERT INTO urls (url, short_url, user_id)
 	VALUES ($1, $2, $3)
@@ -53,22 +54,23 @@ func (r *urlPostgresRepository) Create(ctx context.Context, u URL) (shortCode st
 	return shortCode, inserted, nil
 }
 
-func (r *urlPostgresRepository) GetListURLByUserID(ctx context.Context, userID string) ([]URL, error) {
+func (r *UrlPostgresRepository) GetListURLByUserID(ctx context.Context, userID string) ([]URL, error) {
 	var list []URL
 	query := `SELECT id, url, short_url, user_id FROM urls WHERE user_id = $1 ORDER BY id`
 	err := r.db.SelectContext(ctx, &list, query, userID)
 	return list, err
 }
 
-func (r *urlPostgresRepository) GetTx() (*sql.Tx, error) {
+func (r *UrlPostgresRepository) GetTx() (*sql.Tx, error) {
 	return r.db.Begin()
 }
 
-func (r *urlPostgresRepository) CreateBatch(ctx context.Context, URLBatch []URL) (err error) {
+func (r *UrlPostgresRepository) CreateBatch(ctx context.Context, URLBatch []URL) (err error) {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 	query := `
 	INSERT INTO urls (url, short_url, user_id)
 	VALUES ($1, $2, $3)
@@ -79,7 +81,6 @@ func (r *urlPostgresRepository) CreateBatch(ctx context.Context, URLBatch []URL)
 	for _, u := range URLBatch {
 		_, err = tx.ExecContext(ctx, query, u.URL, u.ShortURL, u.UserID)
 		if err != nil {
-			tx.Rollback()
 			return err
 		}
 	}
@@ -87,7 +88,7 @@ func (r *urlPostgresRepository) CreateBatch(ctx context.Context, URLBatch []URL)
 	return tx.Commit()
 }
 
-func (r *urlPostgresRepository) GetByID(ctx context.Context, id int64) (URL, error) {
+func (r *UrlPostgresRepository) GetByID(ctx context.Context, id int64) (URL, error) {
 	var u URL
 	query := `SELECT id, url, short_url FROM urls WHERE id = $1`
 	err := r.db.GetContext(ctx, &u, query, id)
@@ -100,7 +101,7 @@ func (r *urlPostgresRepository) GetByID(ctx context.Context, id int64) (URL, err
 	return u, nil
 }
 
-func (r *urlPostgresRepository) GetByURL(ctx context.Context, url string) (URL, error) {
+func (r *UrlPostgresRepository) GetByURL(ctx context.Context, url string) (URL, error) {
 	var u URL
 	query := `SELECT id, url, short_url FROM urls WHERE url = $1`
 	err := r.db.GetContext(ctx, &u, query, url)
@@ -113,7 +114,7 @@ func (r *urlPostgresRepository) GetByURL(ctx context.Context, url string) (URL, 
 	return u, nil
 }
 
-func (r *urlPostgresRepository) GetByShortURL(ctx context.Context, shortURL string) (URL, error) {
+func (r *UrlPostgresRepository) GetByShortURL(ctx context.Context, shortURL string) (URL, error) {
 	var u URL
 	query := `SELECT id, url, short_url, is_deleted FROM urls WHERE short_url = $1`
 	err := r.db.GetContext(ctx, &u, query, shortURL)
@@ -126,7 +127,7 @@ func (r *urlPostgresRepository) GetByShortURL(ctx context.Context, shortURL stri
 	return u, nil
 }
 
-func (r *urlPostgresRepository) Delete(ctx context.Context, id int64) error {
+func (r *UrlPostgresRepository) Delete(ctx context.Context, id int64) error {
 	query := `DELETE FROM urls WHERE id = $1`
 	result, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
@@ -139,21 +140,17 @@ func (r *urlPostgresRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *urlPostgresRepository) DeleteByShortURL(ctx context.Context, userID string, shortURL string) error {
+func (r *UrlPostgresRepository) DeleteByShortURL(ctx context.Context, tx *sql.Tx, userID string, shortURL string) error {
 	query := `DELETE FROM urls WHERE user_id = $1 and short_url = $2`
-	result, err := r.db.ExecContext(ctx, query, userID, shortURL)
+	// result, err := r.db.ExecContext(ctx, query, userID, shortURL)
+	_, err := tx.ExecContext(ctx, query, userID, shortURL)
 	if err != nil {
 		return err
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return sql.ErrNoRows
 	}
 	return nil
 }
 
-
-func (r *urlPostgresRepository) List(ctx context.Context) ([]URL, error) {
+func (r *UrlPostgresRepository) List(ctx context.Context) ([]URL, error) {
 	var list []URL
 	query := `SELECT id, url, short_url, user_id FROM urls ORDER BY id`
 	err := r.db.SelectContext(ctx, &list, query)
@@ -161,7 +158,7 @@ func (r *urlPostgresRepository) List(ctx context.Context) ([]URL, error) {
 }
 
 // Update устанавливает флаг is_deleted для набора short_url конкретного пользователя.
-func (r *urlPostgresRepository) UpdateIsDelete(ctx context.Context, userID string, shortIDs []string) error {
+func (r *UrlPostgresRepository) UpdateIsDelete(ctx context.Context, userID string, shortIDs []string) error {
 	if len(shortIDs) == 0 {
 		return nil
 	}
@@ -170,6 +167,7 @@ func (r *urlPostgresRepository) UpdateIsDelete(ctx context.Context, userID strin
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
 	query := `
 		UPDATE urls
@@ -181,7 +179,6 @@ func (r *urlPostgresRepository) UpdateIsDelete(ctx context.Context, userID strin
 	for _, shortID := range shortIDs {
 		_, err = tx.ExecContext(ctx, query, userID, shortID)
 		if err != nil {
-			tx.Rollback()
 			return err
 		}
 	}

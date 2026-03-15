@@ -3,13 +3,15 @@ package logrequest
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -21,8 +23,22 @@ const (
 type contextKey string
 
 const (
-    UserIDKey contextKey = "userID"
+	userIDKey contextKey = "userID"
 )
+
+// GetUserID извлекает userID из контекста. Возвращает ("", false), если значение
+// отсутствует или имеет неожиданный тип. Возвращает (userID, true) для корректного string.
+func GetUserID(ctx context.Context) (string, bool) {
+	v := ctx.Value(userIDKey)
+	if v == nil {
+		return "", false
+	}
+	userID, ok := v.(string)
+	if !ok || userID == "" {
+		return "", false
+	}
+	return userID, true
+}
 
 // signData создаёт HMAC-SHA256 подпись для данных
 func signData(data string) string {
@@ -31,30 +47,33 @@ func signData(data string) string {
     return hex.EncodeToString(h.Sum(nil))
 }
 
-// validateCookie проверяет cookie и возвращает userID, если подпись верна
-func validateCookie(cookieValue string) (string, bool) {
-    parts := strings.SplitN(cookieValue, ":", 2)
-    if len(parts) != 2 {
-        return "", false
-    }
-    userID, signature := parts[0], parts[1]
-    expectedSign := signData(userID)
-    if !hmac.Equal([]byte(signature), []byte(expectedSign)) {
-        return "", false
-    }
-    return userID, true
+// Ошибки валидации cookie (для проверки через errors.Is в будущем).
+var (
+	ErrInvalidCookieFormat = errors.New("cookie has invalid format: expected \"userID:signature\"")
+	ErrInvalidSignature    = errors.New("cookie signature is invalid")
+)
+
+// validateCookie проверяет cookie и возвращает userID при верной подписи.
+func validateCookie(cookieValue string) (string, error) {
+	parts := strings.SplitN(cookieValue, ":", 2)
+	if len(parts) != 2 {
+		return "", ErrInvalidCookieFormat
+	}
+	userID, signature := parts[0], parts[1]
+	expectedSign := signData(userID)
+	if !hmac.Equal([]byte(signature), []byte(expectedSign)) {
+		return "", ErrInvalidSignature
+	}
+	return userID, nil
 }
 
-// generateUserID создаёт новый UUID v4 (16 random bytes, hex-encoded as 32 chars + hyphens)
+// generateUserID создаёт новый UUID v7 (время-упорядоченный, RFC 9562).
 func generateUserID() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
+	id, err := uuid.NewV7()
+	if err != nil {
 		return fmt.Sprintf("%d", time.Now().UnixNano())
 	}
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	return id.String()
 }
 
 // setAuthCookie создаёт и устанавливает cookie с подписанным userID
@@ -85,11 +104,12 @@ func AuthMiddleware(next http.Handler) http.Handler {
         cookie, err := r.Cookie(cookieName)
         if err == nil {
             // Если cookie есть, проверяем подпись
-            if uid, ok := validateCookie(cookie.Value); ok {
+            uid, errValidate := validateCookie(cookie.Value)
+            if errValidate == nil {
                 userID = uid
                 needSetCookie = false
             } else {
-                // Подпись не совпадает — генерируем новый ID
+                // Неверный формат или подпись — генерируем новый ID
                 userID = generateUserID()
                 needSetCookie = true
             }
@@ -105,7 +125,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
         }
 
         // Кладём userID в контекст
-        ctx := context.WithValue(r.Context(), UserIDKey, userID)
+        ctx := context.WithValue(r.Context(), userIDKey, userID)
         next.ServeHTTP(w, r.WithContext(ctx))
     })
 }

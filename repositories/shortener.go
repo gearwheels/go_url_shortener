@@ -136,6 +136,24 @@ func (r *URLShortener) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (r *URLShortener) DeleteByShortURL(ctx context.Context, userID string, shortURL string) error {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	id, ok := r.byShort[shortURL]
+	if !ok {
+		return sql.ErrNoRows
+	}
+	u, ok := r.byID[id]
+	if !ok {
+		return sql.ErrNoRows
+	}
+	delete(r.byID, id)
+	delete(r.byURL, u.URL)
+	delete(r.byShort, u.ShortURL)
+	return nil
+}
+
 func (r *URLShortener) List(ctx context.Context) ([]URL, error) {
 	_ = ctx
 	r.mu.RLock()
