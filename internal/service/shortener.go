@@ -208,7 +208,7 @@ func (s *shortenerService) WorkerDeleteFromURLTable(tasksDelCh <-chan schemassho
 	var wgTx sync.WaitGroup
 	defer close(errCh)
 	defer close(semCh)
-	if repo, ok := s.repository.(*repo.UrlPostgresRepository); ok {
+	if repo, ok := s.repository.(*repo.URLPostgresRepository); ok {
 		tx, err := repo.GetTx()
 		if err != nil {
 			slog.Error("WorkerDeleteFromURLTable: GetTx failed", "error", err)
@@ -217,11 +217,11 @@ func (s *shortenerService) WorkerDeleteFromURLTable(tasksDelCh <-chan schemassho
 		defer tx.Rollback()
 		for task := range tasksDelCh {
 			wgTx.Add(1)
-			go func(){
+			go func() {
 				semCh <- struct{}{}
 				defer func() { <-semCh }()
 				defer wgTx.Done()
-				errCh <- repo.DeleteByShortURLInTx(context.Background(), tx, task.UserID, task.Data);
+				errCh <- repo.DeleteByShortURLInTx(context.Background(), tx, task.UserID, task.Data)
 			}()
 			if err := <-errCh; err != nil {
 				slog.Error("WorkerDeleteFromURLTable: DeleteByShortURLInTx failed", "user_id", task.UserID, "short_id", task.Data, "error", err)
@@ -242,7 +242,7 @@ func (s *shortenerService) WorkerDeleteFromURLTable(tasksDelCh <-chan schemassho
 	} else {
 		for task := range tasksDelCh {
 			wgTx.Add(1)
-			go func(){
+			go func() {
 				semCh <- struct{}{}
 				defer func() { <-semCh }()
 				defer wgTx.Done()
