@@ -203,6 +203,11 @@ func (s *shortenerService) MarkOnDeleteBatch(ctx context.Context, userID string,
 func (s *shortenerService) WorkerDeleteFromURLTable(tasksDelCh <-chan schemasshortener.Task, wg *sync.WaitGroup) {
 	defer wg.Done()
 	counter := 0
+	errCh := make(chan error, 1)
+	semCh := make(chan struct{}, 5)
+	var wgTx sync.WaitGroup
+	defer close(errCh)
+	defer close(semCh)
 	if repo, ok := s.repository.(*repo.UrlPostgresRepository); ok {
 		tx, err := repo.GetTx()
 		if err != nil {
@@ -211,11 +216,20 @@ func (s *shortenerService) WorkerDeleteFromURLTable(tasksDelCh <-chan schemassho
 		}
 		defer tx.Rollback()
 		for task := range tasksDelCh {
-			if err := s.repository.DeleteByShortURL(context.Background(), task.UserID, task.Data); err != nil {
-				slog.Error("WorkerDeleteFromURLTable: UpdateIsDelete failed", "user_id", task.UserID, "short_id", task.Data, "error", err)
+			wgTx.Add(1)
+			go func(){
+				semCh <- struct{}{}
+				defer func() { <-semCh }()
+				defer wgTx.Done()
+				errCh <- repo.DeleteByShortURLInTx(context.Background(), tx, task.UserID, task.Data);
+			}()
+			if err := <-errCh; err != nil {
+				slog.Error("WorkerDeleteFromURLTable: DeleteByShortURLInTx failed", "user_id", task.UserID, "short_id", task.Data, "error", err)
 			}
+			counter++
 			if counter == 20 {
 				counter = 0
+				wg.Wait()
 				tx.Commit()
 				tx, err = repo.GetTx()
 				if err != nil {
@@ -226,15 +240,19 @@ func (s *shortenerService) WorkerDeleteFromURLTable(tasksDelCh <-chan schemassho
 			}
 		}
 	} else {
-		slog.Error("WorkerDeleteFromURLTable: repository is not *repo.UrlPostgresRepository")
-		panic("repository is not *repo.UrlPostgresRepository")
+		for task := range tasksDelCh {
+			wgTx.Add(1)
+			go func(){
+				semCh <- struct{}{}
+				defer func() { <-semCh }()
+				defer wgTx.Done()
+				errCh <- s.repository.DeleteByShortURL(context.Background(), task.UserID, task.Data)
+			}()
+			if err := <-errCh; err != nil {
+				slog.Error("WorkerDeleteFromURLTable: DeleteByShortURLInTx failed", "user_id", task.UserID, "short_id", task.Data, "error", err)
+			}
+		}
 	}
-
-	// for task := range tasksDelCh {
-	// 	if err := s.repository.DeleteByShortURL(context.Background(), task.UserID, task.Data); err != nil {
-	// 		slog.Error("WorkerDeleteFromURLTable: UpdateIsDelete failed", "user_id", task.UserID, "short_id", task.Data, "error", err)
-	// 	}
-	// }
 }
 
 func isUniqueViolation(err error) bool {

@@ -54,9 +54,10 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	b := flag.String("b", "http://localhost:8080/", "destination address")
 	f := flag.String("f", "./storage/store_url.txt", "destination file")
 	d := flag.String("d", "postgres://shortener:shortener@localhost:5432/shortener", "destination database")
+	s := flag.String("s", "", "destination secret")
 	// разбор командной строки
 	flag.Parse()
-	config.Init(*a, *b, *f, *d)
+	config.Init(*a, *b, *f, *d, *s)
 	tasksDelCh := make(chan schemasshortener.Task, 20)
 
 	// Инициализация сервиса в зависимости от наличия базы данных

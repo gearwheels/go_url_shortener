@@ -12,11 +12,12 @@ type Config struct {
 	BaseURL       string `env:"BASEURL"`       // Базовый URL для коротких ссылок
 	PathStoreURL  string `env:"FILE_STORAGE_PATH"` 
 	DatabaseDsn  string `env:"DATABASE_DSN"` 
+	SecretKeyForJWT string `env:"SECRET_KEY_FOR_JWT"` 
 }
 
 var AppConfig *Config
 
-func Init(serverAddress string, baseURL string, pathToStoreURL string, databaseDsn string) {
+func Init(serverAddress string, baseURL string, pathToStoreURL string, databaseDsn string, secretKeyForJWT string) {
 
 	cfg := &Config{}
 	if err := env.Parse(cfg); err != nil {
@@ -43,12 +44,15 @@ func Init(serverAddress string, baseURL string, pathToStoreURL string, databaseD
 	if cfg.DatabaseDsn == "" {
 		cfg.DatabaseDsn = databaseDsn
 	}
-
+	if cfg.SecretKeyForJWT == "" {
+		cfg.SecretKeyForJWT = secretKeyForJWT
+	}
 
 	AppConfig = &Config{
 		ServerAddress: cfg.ServerAddress,
 		BaseURL:       cfg.BaseURL,
 		PathStoreURL:  cfg.PathStoreURL,
 		DatabaseDsn: cfg.DatabaseDsn,
+		SecretKeyForJWT: cfg.SecretKeyForJWT,
 	}
 }

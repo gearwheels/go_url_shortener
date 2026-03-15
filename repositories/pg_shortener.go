@@ -140,14 +140,16 @@ func (r *UrlPostgresRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *UrlPostgresRepository) DeleteByShortURL(ctx context.Context, tx *sql.Tx, userID string, shortURL string) error {
-	query := `DELETE FROM urls WHERE user_id = $1 and short_url = $2`
-	// result, err := r.db.ExecContext(ctx, query, userID, shortURL)
+func (r *UrlPostgresRepository) DeleteByShortURL(ctx context.Context, userID string, shortURL string) error {
+	query := `DELETE FROM urls WHERE user_id = $1 AND short_url = $2`
+	_, err := r.db.ExecContext(ctx, query, userID, shortURL)
+	return err
+}
+
+func (r *UrlPostgresRepository) DeleteByShortURLInTx(ctx context.Context, tx *sql.Tx, userID string, shortURL string) error {
+	query := `DELETE FROM urls WHERE user_id = $1 AND short_url = $2`
 	_, err := tx.ExecContext(ctx, query, userID, shortURL)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (r *UrlPostgresRepository) List(ctx context.Context) ([]URL, error) {
