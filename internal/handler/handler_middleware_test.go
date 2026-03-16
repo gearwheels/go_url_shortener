@@ -57,6 +57,7 @@ func newTestRouter(t *testing.T) http.Handler {
 	r.Use(middleware.Timeout(60 * time.Second))
 	r.Use(logrequest.RequestLogger(logger))
 	r.Use(logrequest.RequestDataZip())
+	r.Use(logrequest.AuthMiddleware)
 
 	r.Post("/", ShortenHandler)
 	r.Post("/api/shorten", JSONShortenHandler)

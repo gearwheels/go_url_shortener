@@ -47,6 +47,11 @@ func GetUserID(ctx context.Context) (string, error) {
 	return userID, nil
 }
 
+// ContextWithUserID помещает идентификатор пользователя в контекст. Используется в тестах при прямом вызове обработчиков без AuthMiddleware.
+func ContextWithUserID(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, userIDKey, userID)
+}
+
 // signData создаёт HMAC-SHA256 подпись для данных
 func signData(data string) string {
 	h := hmac.New(sha256.New, []byte(config.AppConfig.SecretKeyForJWT))
