@@ -13,6 +13,7 @@ type Config struct {
 	PathStoreURL  string `env:"FILE_STORAGE_PATH"` 
 	DatabaseDsn  string `env:"DATABASE_DSN"` 
 	SecretKeyForJWT string `env:"SECRET_KEY_FOR_JWT"` 
+	WorkerNum int `env:"WORKER_NUM"`
 }
 
 var AppConfig *Config
@@ -47,6 +48,10 @@ func Init(serverAddress string, baseURL string, pathToStoreURL string, databaseD
 	if cfg.SecretKeyForJWT == "" {
 		cfg.SecretKeyForJWT = secretKeyForJWT
 	}
+	if cfg.WorkerNum == 0 {
+		cfg.WorkerNum = 5
+	}
+
 
 	AppConfig = &Config{
 		ServerAddress: cfg.ServerAddress,
@@ -54,5 +59,6 @@ func Init(serverAddress string, baseURL string, pathToStoreURL string, databaseD
 		PathStoreURL:  cfg.PathStoreURL,
 		DatabaseDsn: cfg.DatabaseDsn,
 		SecretKeyForJWT: cfg.SecretKeyForJWT,
+		WorkerNum: cfg.WorkerNum,
 	}
 }

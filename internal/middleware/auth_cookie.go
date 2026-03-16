@@ -26,16 +26,25 @@ const (
 	userIDKey contextKey = "userID"
 )
 
-func GetUserID(ctx context.Context) (string, bool) {
+// Ошивки извлечения userID из контекста.
+var (
+	ErrUserIDNotInContext = errors.New("userID not found in context")
+	ErrUserIDWrongType    = errors.New("userID in context has wrong type")
+)
+
+func GetUserID(ctx context.Context) (string, error) {
 	v := ctx.Value(userIDKey)
 	if v == nil {
-		return "", false
+		return "", ErrUserIDNotInContext
 	}
 	userID, ok := v.(string)
-	if !ok || userID == "" {
-		return "", false
+	if !ok {
+		return "", ErrUserIDWrongType
 	}
-	return userID, true
+	if userID == "" {
+		return "", ErrUserIDNotInContext
+	}
+	return userID, nil
 }
 
 // signData создаёт HMAC-SHA256 подпись для данных

@@ -204,7 +204,7 @@ func (s *shortenerService) WorkerDeleteFromURLTable(tasksDelCh <-chan schemassho
 	defer wg.Done()
 	counter := 0
 	errCh := make(chan error, 1)
-	semCh := make(chan struct{}, 5)
+	semCh := make(chan struct{}, config.AppConfig.WorkerNum)
 	var wgTx sync.WaitGroup
 	defer close(errCh)
 	defer close(semCh)

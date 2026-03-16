@@ -49,7 +49,11 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		originalURL = "http://" + originalURL
 	}
 
-	userID, _ := logrequest.GetUserID(r.Context())
+	userID, err := logrequest.GetUserID(r.Context())
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
 	id, inserted, err := service.Shortener.ShortenURL(r.Context(), originalURL, userID)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -234,8 +238,8 @@ type userURLItem struct {
 
 func UserURL(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	userID, ok := logrequest.GetUserID(ctx)
-	if !ok {
+	userID, err := logrequest.GetUserID(ctx)
+	if err != nil {
 		http.Error(w,  http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
@@ -279,8 +283,8 @@ func DeleteBatchHandler(tasksDelCh chan<- schemasshortener.Task) http.HandlerFun
 
 func DeleteBatch(w http.ResponseWriter, r *http.Request, tasksDelCh chan<- schemasshortener.Task) {
 	ctx := r.Context()
-	userID, ok := logrequest.GetUserID(ctx)
-	if !ok {
+	userID, err := logrequest.GetUserID(ctx)
+	if err != nil {
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
@@ -288,7 +292,7 @@ func DeleteBatch(w http.ResponseWriter, r *http.Request, tasksDelCh chan<- schem
 	var buf bytes.Buffer
 
 	// читаем тело запроса
-	_, err := buf.ReadFrom(r.Body)
+	_, err = buf.ReadFrom(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
