@@ -24,6 +24,7 @@ type URLShortener struct {
 	byID    map[int64]URL
 	byURL   map[string]int64
 	byShort map[string]int64
+	UserID  map[string]int64
 }
 
 func NewRepoShortener() *URLShortener {
@@ -149,6 +150,27 @@ func (r *URLShortener) List(ctx context.Context) ([]URL, error) {
 	out := make([]URL, 0, len(ids))
 	for _, id := range ids {
 		out = append(out, r.byID[id])
+	}
+	return out, nil
+}
+
+func (r *URLShortener) GetListURLByUserID(ctx context.Context, userID string) ([]URL, error) {
+	_ = ctx
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	ids := make([]int64, 0, len(r.byID))
+	for id := range r.byID {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	out := make([]URL, 0)
+	for _, id := range ids {
+		u := r.byID[id]
+		if u.UserID == userID {
+			out = append(out, u)
+		}
 	}
 	return out, nil
 }

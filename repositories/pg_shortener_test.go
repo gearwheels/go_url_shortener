@@ -28,7 +28,7 @@ func TestURLPostgresRepository_Create(t *testing.T) {
 
 	t.Run("success insert", func(t *testing.T) {
 		mock.ExpectQuery(`INSERT INTO urls`).
-			WithArgs("https://example.com", "abc123").
+			WithArgs("https://example.com", "abc123", "").
 			WillReturnRows(sqlmock.NewRows([]string{"short_url", "inserted"}).AddRow("abc123", true))
 
 		shortCode, inserted, err := repo.Create(ctx, URL{
@@ -48,7 +48,7 @@ func TestURLPostgresRepository_Create(t *testing.T) {
 
 	t.Run("success conflict returns existing", func(t *testing.T) {
 		mock.ExpectQuery(`INSERT INTO urls`).
-			WithArgs("https://example.com", "newid").
+			WithArgs("https://example.com", "newid", "").
 			WillReturnRows(sqlmock.NewRows([]string{"short_url", "inserted"}).AddRow("existing123", false))
 
 		shortCode, inserted, err := repo.Create(ctx, URL{URL: "https://example.com", ShortURL: "newid"})
@@ -62,7 +62,7 @@ func TestURLPostgresRepository_Create(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		mock.ExpectQuery(`INSERT INTO urls`).
-			WithArgs("https://bad.com", "x").
+			WithArgs("https://bad.com", "x", "").
 			WillReturnError(sql.ErrConnDone)
 
 		_, _, err := repo.Create(ctx, URL{URL: "https://bad.com", ShortURL: "x"})
@@ -223,10 +223,10 @@ func TestURLPostgresRepository_List(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls ORDER BY id`).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "url", "short_url"}).
-				AddRow(1, "https://a.com", "id1").
-				AddRow(2, "https://b.com", "id2"))
+		mock.ExpectQuery(`SELECT id, url, short_url, user_id FROM urls ORDER BY id`).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "url", "short_url", "user_id"}).
+				AddRow(1, "https://a.com", "id1", "").
+				AddRow(2, "https://b.com", "id2", ""))
 
 		list, err := repo.List(ctx)
 		if err != nil {
@@ -244,8 +244,8 @@ func TestURLPostgresRepository_List(t *testing.T) {
 	})
 
 	t.Run("empty", func(t *testing.T) {
-		mock.ExpectQuery(`SELECT id, url, short_url FROM urls ORDER BY id`).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "url", "short_url"}))
+		mock.ExpectQuery(`SELECT id, url, short_url, user_id FROM urls ORDER BY id`).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "url", "short_url", "user_id"}))
 
 		list, err := repo.List(ctx)
 		if err != nil {
@@ -272,10 +272,10 @@ func TestURLPostgresRepository_CreateBatch(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectExec(`INSERT INTO urls`).
-			WithArgs("https://example.com/a", "shortA").
+			WithArgs("https://example.com/a", "shortA", "").
 			WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectExec(`INSERT INTO urls`).
-			WithArgs("https://example.com/b", "shortB").
+			WithArgs("https://example.com/b", "shortB", "").
 			WillReturnResult(sqlmock.NewResult(2, 1))
 		mock.ExpectCommit()
 
@@ -304,7 +304,7 @@ func TestURLPostgresRepository_CreateBatch(t *testing.T) {
 		}
 		mock.ExpectBegin()
 		mock.ExpectExec(`INSERT INTO urls`).
-			WithArgs("https://example.com/x", "shortX").
+			WithArgs("https://example.com/x", "shortX", "").
 			WillReturnError(sql.ErrConnDone)
 		mock.ExpectRollback()
 

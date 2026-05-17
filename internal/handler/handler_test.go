@@ -289,7 +289,7 @@ func TestRedirectHandler_Success(t *testing.T) {
 	// Сначала создаем короткий URL
 	originalURL := "https://example.com/redirect-test"
 	ctx := context.Background()
-	id, _, err := service.Shortener.ShortenURL(ctx, originalURL)
+	id, _, err := service.Shortener.ShortenURL(ctx, originalURL, "")
 	if err != nil {
 		t.Fatalf("Failed to shorten URL: %v", err)
 	}
@@ -319,7 +319,7 @@ func TestRedirectHandler_RootPath(t *testing.T) {
 	RedirectHandler(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
-		t.Errorf("Expected status %d for root path, got %d", http.StatusOK, rr.Code)
+		t.Errorf("Expected status %d for root path, got %d", http.StatusBadRequest, rr.Code)
 	}
 
 	expectedMessage := "Send POST request with URL in body as text/plain to shorten URL"
