@@ -20,6 +20,11 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+var randBufPool = sync.Pool{New: func() any {
+	b := make([]byte, 7)
+	return &b
+}}
+
 var (
 	startPrefix string // префикс, зависящий от времени запуска
 	counter     uint64 // атомарный счётчик
@@ -64,14 +69,22 @@ func encodeBase62(val uint64) string {
 // GenerateUniqueID возвращает уникальную строку длиной 10 символов
 func GenerateUniqueID() string {
 	id := atomic.AddUint64(&counter, 1)
-	countStr := encodeBase62(id)
-	for len(countStr) < partLen {
-		countStr = "0" + countStr
+	return startPrefix + padBase62(id, partLen)
+}
+
+// padBase62 кодирует val в base62 и дополняет слева нулями до length символов.
+// Использует стековый массив — без аллокаций на heap.
+func padBase62(val uint64, length int) string {
+	var buf [partLen]byte
+	for i := range buf {
+		buf[i] = '0'
 	}
-	if len(countStr) > partLen {
-		countStr = countStr[:partLen]
+	s := encodeBase62(val)
+	if len(s) >= length {
+		return s[:length]
 	}
-	return startPrefix + countStr
+	copy(buf[length-len(s):], s)
+	return string(buf[:])
 }
 
 // URLShortenerInterface определяет методы сервиса сокращения URL,
@@ -99,9 +112,12 @@ func NewShortenerService(r repo.ShortenerRepository) URLShortenerInterface {
 }
 
 func (s *shortenerService) GenerateID() string {
-	b := make([]byte, 7)
+	p := randBufPool.Get().(*[]byte)
+	b := *p
 	rand.Read(b) //nolint:errcheck // crypto/rand.Read never fails on Go 1.20+
-	return base64.RawURLEncoding.EncodeToString(b)
+	result := base64.RawURLEncoding.EncodeToString(b)
+	randBufPool.Put(p)
+	return result
 }
 
 func (s *shortenerService) ShortenURL(ctx context.Context, originalURL string, userID string) (string, bool, error) {
