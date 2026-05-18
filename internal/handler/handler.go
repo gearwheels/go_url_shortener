@@ -154,14 +154,18 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	originalURL, err := service.Shortener.GetOriginalURL(r.Context(), id)
+	originalURL, delFlag, err := service.Shortener.GetOriginalURL(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Short URL not found", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Location", originalURL)
-	w.WriteHeader(http.StatusTemporaryRedirect)
+	if delFlag {
+		w.WriteHeader(http.StatusGone)
+	} else {
+		w.WriteHeader(http.StatusTemporaryRedirect)
+	}
 
 	userID, _ := logrequest.GetUserID(r.Context())
 	Auditor.Notify(audit.Event{Action: "follow", UserID: userID, URL: originalURL})
@@ -235,9 +239,6 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(resp)
 }
 
-
-
-// userURLItem — элемент ответа GET /api/user/urls (short_url, original_url)
 type userURLItem struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -19,6 +20,7 @@ import (
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
+	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	service "github.com/gearwheels/go_url_shortener/internal/service"
 	"github.com/gearwheels/go_url_shortener/migrations"
 	_ "github.com/jackc/pgx/v5/stdlib"
