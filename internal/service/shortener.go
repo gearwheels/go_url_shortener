@@ -78,7 +78,7 @@ func GenerateUniqueID() string {
 // которые использует слой handler.
 type URLShortenerInterface interface {
 	ShortenURL(ctx context.Context, originalURL string, userID string) (string, bool, error)
-	GetOriginalURL(ctx context.Context, id string) (string, bool, error)
+	GetOriginalURL(ctx context.Context, id string) (string, error)
 	ShortenURLBatch(ctx context.Context, batchURL []schemasshortener.RequestBatchURLSchema, userID string) ([]schemasshortener.ResponseBatchURLSchema, error)
 	GenerateID() string
 	GetAllShortenerURL(ctx context.Context, userID string) ([]repo.URL, error)
@@ -182,10 +182,10 @@ func (s *shortenerService) ShortenURLBatch(ctx context.Context, batchURL []schem
 	return responses, nil
 }
 
-func (s *shortenerService) GetOriginalURL(ctx context.Context, id string) (string, bool, error) {
+func (s *shortenerService) GetOriginalURL(ctx context.Context, id string) (string, error) {
 	u, err := s.repository.GetByShortURL(ctx, id)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if u.URL == "" {
 		return "", false, errors.New("short URL not found")
@@ -253,6 +253,7 @@ func (s *shortenerService) WorkerDeleteFromURLTable(tasksDelCh <-chan schemassho
 			}
 		}
 	}
+	return u.URL, nil
 }
 
 func isUniqueViolation(err error) bool {

@@ -9,11 +9,10 @@ import (
 )
 
 type URL struct {
-	ID          int64  `db:"id"`
-	URL         string `db:"url"`
-	ShortURL    string `db:"short_url"`
-	UserID      string `db:"user_id"`
-	DeletedFlag bool   `db:"is_deleted"`
+	ID       int64  `db:"id"`
+	URL      string `db:"url"`
+	ShortURL string `db:"short_url"`
+	UserID   string `db:"user_id"`
 }
 
 type ShortenerRepository interface {
@@ -116,7 +115,7 @@ func (r *URLPostgresRepository) GetByURL(ctx context.Context, url string) (URL, 
 
 func (r *URLPostgresRepository) GetByShortURL(ctx context.Context, shortURL string) (URL, error) {
 	var u URL
-	query := `SELECT id, url, short_url, is_deleted FROM urls WHERE short_url = $1`
+	query := `SELECT id, url, short_url FROM urls WHERE short_url = $1`
 	err := r.db.GetContext(ctx, &u, query, shortURL)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

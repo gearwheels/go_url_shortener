@@ -85,7 +85,7 @@ func TestURLShortener_GetOriginalURL(t *testing.T) {
 	ctx := context.Background()
 
 	// Тест 1: Получение несуществующего URL
-	_, _, err := shortener.GetOriginalURL(ctx, "nonexistent")
+	_, err := shortener.GetOriginalURL(ctx, "nonexistent")
 	if err == nil {
 		t.Error("Expected error for non-existing URL")
 	}
@@ -97,7 +97,7 @@ func TestURLShortener_GetOriginalURL(t *testing.T) {
 		t.Fatalf("Failed to shorten URL: %v", err)
 	}
 
-	storedURL, _, err := shortener.GetOriginalURL(ctx, id)
+	storedURL, err := shortener.GetOriginalURL(ctx, id)
 	if err != nil {
 		t.Errorf("Expected existing URL to exist, got error: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestURLShortener_ShortenURL(t *testing.T) {
 	}
 
 	// Проверяем, что URL сохранен через GetOriginalURL
-	storedURL, _, err := shortener.GetOriginalURL(ctx, id1)
+	storedURL, err := shortener.GetOriginalURL(ctx, id1)
 	if err != nil {
 		t.Fatalf("Expected URL to be stored, got error: %v", err)
 	}
