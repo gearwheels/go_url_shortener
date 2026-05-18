@@ -39,7 +39,7 @@ func init() {
 func newTestRouter(t *testing.T) http.Handler {
 	t.Helper()
 	if config.AppConfig == nil {
-		config.Init("localhost:8888", "http://localhost:8000/", testStoragePath, "postgres://shortener:shortener@localhost:5432/shortener")
+		config.Init("localhost:8888", "http://localhost:8000/", testStoragePath, "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "")
 	}
 	if service.Shortener == nil {
 		service.Shortener = service.GetService(false, nil)
@@ -57,6 +57,7 @@ func newTestRouter(t *testing.T) http.Handler {
 	r.Use(middleware.Timeout(60 * time.Second))
 	r.Use(logrequest.RequestLogger(logger))
 	r.Use(logrequest.RequestDataZip())
+	r.Use(logrequest.AuthMiddleware)
 
 	r.Post("/", ShortenHandler)
 	r.Post("/api/shorten", JSONShortenHandler)
@@ -86,7 +87,7 @@ func TestRouterWithMiddleware_ShortenTextPlain(t *testing.T) {
 
 	id := strings.TrimPrefix(body, config.AppConfig.BaseURL)
 	ctx := context.Background()
-	original, err := service.Shortener.GetOriginalURL(ctx, id)
+	original, _, err := service.Shortener.GetOriginalURL(ctx, id)
 	if err != nil {
 		t.Errorf("Expected URL to be stored, got error: %v", err)
 	}

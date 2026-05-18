@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -15,9 +16,11 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 
+	"github.com/gearwheels/go_url_shortener/internal/audit"
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
+	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	service "github.com/gearwheels/go_url_shortener/internal/service"
 	"github.com/gearwheels/go_url_shortener/migrations"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -52,20 +55,23 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	b := flag.String("b", "http://localhost:8080/", "destination address")
 	f := flag.String("f", "./storage/store_url.txt", "destination file")
 	d := flag.String("d", "postgres://shortener:shortener@localhost:5432/shortener", "destination database")
+	s := flag.String("s", "", "destination secret")
+	auditFile := flag.String("audit-file", "", "path to audit log file")
+	auditURL := flag.String("audit-url", "", "URL of remote audit receiver")
 	// разбор командной строки
 	flag.Parse()
-	config.Init(*a, *b, *f, *d)
+	config.Init(*a, *b, *f, *d, *s, *auditFile, *auditURL)
 
-	// Наш middleware для логирования
-	router.Use(logrequest.RequestLogger(logger))
-	router.Use(logrequest.RequestDataZip())
-	router.Use(logrequest.AuthMiddleware)
-	router.Post("/", handler.ShortenHandler)
-	router.Post("/api/shorten", handler.JSONShortenHandler)
-	router.Get("/{id}", handler.RedirectHandler)
-	router.Get("/ping", handler.CheckDBStatus)
-	router.Get("/api/user/urls", handler.UserURL)
-	router.Post("/api/shorten/batch", handler.ShortenBatchHandler)
+	auditor := audit.NewAuditor()
+	if config.AppConfig.AuditFile != "" {
+		auditor.Subscribe(audit.NewFileObserver(config.AppConfig.AuditFile))
+	}
+	if config.AppConfig.AuditURL != "" {
+		auditor.Subscribe(audit.NewHTTPObserver(config.AppConfig.AuditURL))
+	}
+	handler.Auditor = auditor
+
+	tasksDelCh := make(chan schemasshortener.Task, 20)
 
 	// Инициализация сервиса в зависимости от наличия базы данных
 	pgExist := config.AppConfig.DatabaseDsn != ""
@@ -86,6 +92,22 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 		}
 	}
 	service.Shortener = service.GetService(pgExist, db)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go service.Shortener.WorkerDeleteFromURLTable(tasksDelCh, &wg)
+
+	// Наш middleware для логирования
+	router.Use(logrequest.RequestLogger(logger))
+	router.Use(logrequest.RequestDataZip())
+	router.Use(logrequest.AuthMiddleware)
+	router.Post("/", handler.ShortenHandler)
+	router.Post("/api/shorten", handler.JSONShortenHandler)
+	router.Post("/api/shorten/batch", handler.ShortenBatchHandler)
+	router.Get("/{id}", handler.RedirectHandler)
+	router.Get("/ping", handler.CheckDBStatus)
+	router.Get("/api/user/urls", handler.UserURL)
+	router.Delete("/api/user/urls", handler.DeleteBatchHandler(tasksDelCh))
 
 	// port := ":8080"
 	fmt.Printf("URL Shortener server starting on %s\n", *a)

@@ -21,67 +21,69 @@ import (
 )
 
 var (
-    startPrefix string   // префикс, зависящий от времени запуска
-    counter     uint64   // атомарный счётчик
+	startPrefix string // префикс, зависящий от времени запуска
+	counter     uint64 // атомарный счётчик
 )
 
 const (
-    alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" // base62
-    partLen  = 5
+	alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" // base62
+	partLen  = 5
 )
+
 // генерация неповторяющихся строк для батчинга
 // init инициализирует префикс запуска и счётчик
 func init() {
-    nano := time.Now().UnixNano()
-    b := make([]byte, 8)
-    binary.LittleEndian.PutUint64(b, uint64(nano))
-    startPrefix = encodeBase62(uint64(nano))
-    for len(startPrefix) < partLen {
-        startPrefix = "0" + startPrefix
-    }
-    if len(startPrefix) > partLen {
-        startPrefix = startPrefix[:partLen]
-    }
-    counter = 0
+	nano := time.Now().UnixNano()
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, uint64(nano))
+	startPrefix = encodeBase62(uint64(nano))
+	for len(startPrefix) < partLen {
+		startPrefix = "0" + startPrefix
+	}
+	if len(startPrefix) > partLen {
+		startPrefix = startPrefix[:partLen]
+	}
+	counter = 0
 }
 
 func encodeBase62(val uint64) string {
-    if val == 0 {
-        return "0"
-    }
-    const base = uint64(len(alphabet))
-    var buf [32]byte
-    i := len(buf) - 1
-    for val > 0 {
-        buf[i] = alphabet[val%base]
-        val /= base
-        i--
-    }
-    return string(buf[i+1:])
+	if val == 0 {
+		return "0"
+	}
+	const base = uint64(len(alphabet))
+	var buf [32]byte
+	i := len(buf) - 1
+	for val > 0 {
+		buf[i] = alphabet[val%base]
+		val /= base
+		i--
+	}
+	return string(buf[i+1:])
 }
 
 // GenerateUniqueID возвращает уникальную строку длиной 10 символов
 func GenerateUniqueID() string {
-    id := atomic.AddUint64(&counter, 1)
-    countStr := encodeBase62(id)
-    for len(countStr) < partLen {
-        countStr = "0" + countStr
-    }
-    if len(countStr) > partLen {
-        countStr = countStr[:partLen]
-    }
-    return startPrefix + countStr
+	id := atomic.AddUint64(&counter, 1)
+	countStr := encodeBase62(id)
+	for len(countStr) < partLen {
+		countStr = "0" + countStr
+	}
+	if len(countStr) > partLen {
+		countStr = countStr[:partLen]
+	}
+	return startPrefix + countStr
 }
-
 
 // URLShortenerInterface определяет методы сервиса сокращения URL,
 // которые использует слой handler.
 type URLShortenerInterface interface {
 	ShortenURL(ctx context.Context, originalURL string, userID string) (string, bool, error)
-	GetOriginalURL(ctx context.Context, id string) (string, error)
+	GetOriginalURL(ctx context.Context, id string) (string, bool, error)
 	ShortenURLBatch(ctx context.Context, batchURL []schemasshortener.RequestBatchURLSchema, userID string) ([]schemasshortener.ResponseBatchURLSchema, error)
 	GenerateID() string
 	GetAllShortenerURL(ctx context.Context, userID string) ([]repo.URL, error)
+	MarkOnDeleteBatch(ctx context.Context, userID string, listID []string) error
+	WorkerDeleteFromURLTable(tasksDelCh <-chan schemasshortener.Task, wg *sync.WaitGroup)
 }
 
 // Shortener — глобальный сервис, который используют handler'ы.
@@ -117,14 +119,13 @@ func (s *shortenerService) ShortenURL(ctx context.Context, originalURL string, u
 	}
 }
 
-func (s *shortenerService) GetAllShortenerURL(ctx context.Context, userID string) ([]repo.URL, error) { 
+func (s *shortenerService) GetAllShortenerURL(ctx context.Context, userID string) ([]repo.URL, error) {
 	shortCode, err := s.repository.GetListURLByUserID(ctx, userID)
 	if err == nil {
 		return shortCode, nil
 	}
 	return []repo.URL{}, err
 }
-
 
 func (s *shortenerService) ShortenURLBatch(ctx context.Context, batchURL []schemasshortener.RequestBatchURLSchema, userID string) ([]schemasshortener.ResponseBatchURLSchema, error) {
 	if len(batchURL) == 0 {
@@ -150,8 +151,7 @@ func (s *shortenerService) ShortenURLBatch(ctx context.Context, batchURL []schem
 
 			id := GenerateUniqueID()
 			dbBatch[i] = repo.URL{URL: original, ShortURL: id, UserID: userID}
-			
-		
+
 			shortenedURL, err := url.JoinPath(config.AppConfig.BaseURL, id)
 			if err != nil {
 				errCh <- err
@@ -182,15 +182,77 @@ func (s *shortenerService) ShortenURLBatch(ctx context.Context, batchURL []schem
 	return responses, nil
 }
 
-func (s *shortenerService) GetOriginalURL(ctx context.Context, id string) (string, error) {
+func (s *shortenerService) GetOriginalURL(ctx context.Context, id string) (string, bool, error) {
 	u, err := s.repository.GetByShortURL(ctx, id)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if u.URL == "" {
-		return "", errors.New("short URL not found")
+		return "", false, errors.New("short URL not found")
 	}
-	return u.URL, nil
+	return u.URL, u.DeletedFlag, nil
+}
+
+func (s *shortenerService) MarkOnDeleteBatch(ctx context.Context, userID string, listID []string) error {
+	if len(listID) == 0 {
+		return nil
+	}
+	return s.repository.UpdateIsDelete(ctx, userID, listID)
+}
+
+func (s *shortenerService) WorkerDeleteFromURLTable(tasksDelCh <-chan schemasshortener.Task, wg *sync.WaitGroup) {
+	defer wg.Done()
+	counter := 0
+	errCh := make(chan error, 1)
+	semCh := make(chan struct{}, config.AppConfig.WorkerNum)
+	var wgTx sync.WaitGroup
+	defer close(errCh)
+	defer close(semCh)
+	if repo, ok := s.repository.(*repo.URLPostgresRepository); ok {
+		tx, err := repo.GetTx()
+		if err != nil {
+			slog.Error("WorkerDeleteFromURLTable: GetTx failed", "error", err)
+			return
+		}
+		defer tx.Rollback()
+		for task := range tasksDelCh {
+			wgTx.Add(1)
+			go func() {
+				semCh <- struct{}{}
+				defer func() { <-semCh }()
+				defer wgTx.Done()
+				errCh <- repo.DeleteByShortURLInTx(context.Background(), tx, task.UserID, task.Data)
+			}()
+			if err := <-errCh; err != nil {
+				slog.Error("WorkerDeleteFromURLTable: DeleteByShortURLInTx failed", "user_id", task.UserID, "short_id", task.Data, "error", err)
+			}
+			counter++
+			if counter == 20 {
+				counter = 0
+				wg.Wait()
+				tx.Commit()
+				tx, err = repo.GetTx()
+				if err != nil {
+					slog.Error("WorkerDeleteFromURLTable: GetTx failed", "error", err)
+					return
+				}
+				defer tx.Rollback()
+			}
+		}
+	} else {
+		for task := range tasksDelCh {
+			wgTx.Add(1)
+			go func() {
+				semCh <- struct{}{}
+				defer func() { <-semCh }()
+				defer wgTx.Done()
+				errCh <- s.repository.DeleteByShortURL(context.Background(), task.UserID, task.Data)
+			}()
+			if err := <-errCh; err != nil {
+				slog.Error("WorkerDeleteFromURLTable: DeleteByShortURLInTx failed", "user_id", task.UserID, "short_id", task.Data, "error", err)
+			}
+		}
+	}
 }
 
 func isUniqueViolation(err error) bool {

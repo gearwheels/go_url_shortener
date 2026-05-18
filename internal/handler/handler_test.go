@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
+	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
 	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	"github.com/gearwheels/go_url_shortener/internal/service"
 	repo "github.com/gearwheels/go_url_shortener/repositories"
@@ -32,7 +33,7 @@ func TestShortenHandler_ContentType(t *testing.T) {
 
 	if config.AppConfig == nil {
 		fmt.Println("AppConfig don't init")
-		config.Init("localhost:8888", "http://localhost:8000/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener")
+		config.Init("localhost:8888", "http://localhost:8000/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "")
 	} else {
 		fmt.Println("AppConfig has been init-ed")
 	}
@@ -45,6 +46,9 @@ func TestShortenHandler_ContentType(t *testing.T) {
 			body := strings.NewReader("https://example.com")
 			req := httptest.NewRequest(http.MethodPost, "/", body)
 			req.Header.Set("Content-Type", tt.contentType)
+			if tt.contentType == "text/plain" {
+				req = req.WithContext(logrequest.ContextWithUserID(req.Context(), "test-user-id"))
+			}
 
 			rr := httptest.NewRecorder()
 			ShortenHandler(rr, req)
@@ -104,6 +108,7 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/", body)
 			req.Header.Set("Content-Type", "text/plain")
 			req.Host = config.AppConfig.ServerAddress
+			req = req.WithContext(logrequest.ContextWithUserID(req.Context(), "test-user-id"))
 
 			rr := httptest.NewRecorder()
 			ShortenHandler(rr, req)
@@ -134,7 +139,7 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 			id := strings.TrimPrefix(responseBody, config.AppConfig.BaseURL)
 			// Проверяем, что URL сохранен правильно
 			reqCtx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
-			storedURL, err := service.Shortener.GetOriginalURL(reqCtx, id)
+			storedURL, _, err := service.Shortener.GetOriginalURL(reqCtx, id)
 
 			if err != nil {
 				t.Errorf("Expected URL to be stored, got error: %v", err)
@@ -151,12 +156,14 @@ func TestShortenHandler_ValidURL(t *testing.T) {
 func TestShortenHandler_DuplicateURL(t *testing.T) {
 	service.Shortener = service.GetService(false, nil)
 	url := "https://example.com/unique"
+	ctxWithUser := logrequest.ContextWithUserID(context.Background(), "test-user-id")
 
 	// Первый запрос
 	body1 := strings.NewReader(url)
 	req1 := httptest.NewRequest(http.MethodPost, "/", body1)
 	req1.Header.Set("Content-Type", "text/plain")
 	req1.Host = "localhost:8080"
+	req1 = req1.WithContext(ctxWithUser)
 
 	rr1 := httptest.NewRecorder()
 	ShortenHandler(rr1, req1)
@@ -173,6 +180,7 @@ func TestShortenHandler_DuplicateURL(t *testing.T) {
 	req2 := httptest.NewRequest(http.MethodPost, "/", body2)
 	req2.Header.Set("Content-Type", "text/plain")
 	req2.Host = "localhost:8080"
+	req2 = req2.WithContext(ctxWithUser)
 
 	rr2 := httptest.NewRecorder()
 	ShortenHandler(rr2, req2)
@@ -197,8 +205,8 @@ func TestMainHandler_Integration(t *testing.T) {
 	body := strings.NewReader(url)
 
 	req1 := httptest.NewRequest(http.MethodPost, "/", body)
-
 	req1.Header.Set("Content-Type", "text/plain")
+	req1 = req1.WithContext(logrequest.ContextWithUserID(req1.Context(), "test-user-id"))
 
 	w := httptest.NewRecorder()
 	ShortenHandler(w, req1)
@@ -460,7 +468,7 @@ func TestJSONShortenHandler_ValidURL(t *testing.T) {
 
 			id := strings.TrimPrefix(resp.Result, config.AppConfig.BaseURL)
 			reqCtx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
-			storedURL, err := service.Shortener.GetOriginalURL(reqCtx, id)
+			storedURL, _, err := service.Shortener.GetOriginalURL(reqCtx, id)
 			if err != nil {
 				t.Errorf("Expected URL to be stored, got error: %v", err)
 			}
@@ -501,7 +509,7 @@ func TestJSONShortenHandler_ResponseFormat(t *testing.T) {
 // TestShortenBatchHandler тестирует батчевое сокращение URL
 func TestShortenBatchHandler(t *testing.T) {
 	if config.AppConfig == nil {
-		config.Init("localhost:8080", "http://localhost:8080/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener")
+		config.Init("localhost:8080", "http://localhost:8080/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "")
 	}
 	service.Shortener = service.NewShortenerService(repo.NewRepoShortener())
 
@@ -537,7 +545,7 @@ func TestShortenBatchHandler(t *testing.T) {
 		}
 		id := strings.TrimPrefix(item.ShortURL, config.AppConfig.BaseURL)
 		id = strings.Trim(id, "/")
-		original, err := service.Shortener.GetOriginalURL(ctx, id)
+		original, _, err := service.Shortener.GetOriginalURL(ctx, id)
 		if err != nil {
 			t.Errorf("item[%d]: GetOriginalURL(%s): %v", i, id, err)
 		}

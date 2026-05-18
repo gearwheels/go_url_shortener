@@ -136,6 +136,24 @@ func (r *URLShortener) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (r *URLShortener) DeleteByShortURL(ctx context.Context, userID string, shortURL string) error {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	id, ok := r.byShort[shortURL]
+	if !ok {
+		return sql.ErrNoRows
+	}
+	u, ok := r.byID[id]
+	if !ok {
+		return sql.ErrNoRows
+	}
+	delete(r.byID, id)
+	delete(r.byURL, u.URL)
+	delete(r.byShort, u.ShortURL)
+	return nil
+}
+
 func (r *URLShortener) List(ctx context.Context) ([]URL, error) {
 	_ = ctx
 	r.mu.RLock()
@@ -152,6 +170,33 @@ func (r *URLShortener) List(ctx context.Context) ([]URL, error) {
 		out = append(out, r.byID[id])
 	}
 	return out, nil
+}
+
+// Update помечает записи пользователя как удалённые по списку short_url.
+func (r *URLShortener) UpdateIsDelete(ctx context.Context, userID string, shortIDs []string) error {
+	_ = ctx
+	if len(shortIDs) == 0 {
+		return nil
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	set := make(map[string]struct{}, len(shortIDs))
+	for _, id := range shortIDs {
+		set[id] = struct{}{}
+	}
+
+	for key, u := range r.byID {
+		if u.UserID == userID {
+			if _, ok := set[u.ShortURL]; ok {
+				u.DeletedFlag = true
+				r.byID[key] = u
+			}
+		}
+	}
+
+	return nil
 }
 
 func (r *URLShortener) GetListURLByUserID(ctx context.Context, userID string) ([]URL, error) {

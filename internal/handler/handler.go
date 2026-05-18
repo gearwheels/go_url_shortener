@@ -10,16 +10,20 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gearwheels/go_url_shortener/internal/audit"
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
 	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	"github.com/gearwheels/go_url_shortener/internal/service"
 )
 
+// Auditor рассылает события аудита наблюдателям; устанавливается в main.go
+var Auditor *audit.Auditor
+
 func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.URL.Path != "/" {
-		http.Error(w, "Not found", http.StatusNotFound)
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 
@@ -49,7 +53,11 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		originalURL = "http://" + originalURL
 	}
 
-	userID, _ := r.Context().Value(logrequest.UserIDKey).(string)
+	userID, err := logrequest.GetUserID(r.Context())
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
 	id, inserted, err := service.Shortener.ShortenURL(r.Context(), originalURL, userID)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -70,6 +78,7 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, shortenedURL)
 
 	slog.Info("Created short URL", "short_url", shortenedURL, "original", originalURL)
+	Auditor.Notify(audit.Event{Action: "shorten", UserID: userID, URL: originalURL})
 }
 
 func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +115,7 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 		request.URL = "http://" + request.URL
 	}
 
-	userID, _ := r.Context().Value(logrequest.UserIDKey).(string)
+	userID, _ := logrequest.GetUserID(r.Context())
 	id, inserted, err := service.Shortener.ShortenURL(r.Context(), request.URL, userID)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -133,6 +142,7 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(resp)
 
 	slog.Info("Created short URL", "short_url", shortenedURL, "original", request.URL)
+	Auditor.Notify(audit.Event{Action: "shorten", UserID: userID, URL: request.URL})
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request) {
@@ -144,15 +154,21 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	originalURL, err := service.Shortener.GetOriginalURL(r.Context(), id)
+	originalURL, delFlag, err := service.Shortener.GetOriginalURL(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Short URL not found", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Location", originalURL)
-	w.WriteHeader(http.StatusTemporaryRedirect)
+	if delFlag {
+		w.WriteHeader(http.StatusGone)
+	} else {
+		w.WriteHeader(http.StatusTemporaryRedirect)
+	}
 
+	userID, _ := logrequest.GetUserID(r.Context())
+	Auditor.Notify(audit.Event{Action: "follow", UserID: userID, URL: originalURL})
 	slog.Info("Redirecting", "id", id, "location", originalURL)
 }
 
@@ -201,8 +217,8 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Batch of URL cannot be empty", http.StatusBadRequest)
 		return
 	}
-	
-	userID, _ := r.Context().Value(logrequest.UserIDKey).(string)
+
+	userID, _ := logrequest.GetUserID(r.Context())
 	response, err := service.Shortener.ShortenURLBatch(r.Context(), batchURL, userID)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -223,9 +239,6 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(resp)
 }
 
-
-
-// userURLItem — элемент ответа GET /api/user/urls (short_url, original_url)
 type userURLItem struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
@@ -233,9 +246,9 @@ type userURLItem struct {
 
 func UserURL(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	userID, ok := ctx.Value(logrequest.UserIDKey).(string)
-	if !ok || userID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	userID, err := logrequest.GetUserID(ctx)
+	if err != nil {
+		http.Error(w,  http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
@@ -268,4 +281,52 @@ func UserURL(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(resp)
+}
+
+func DeleteBatchHandler(tasksDelCh chan<- schemasshortener.Task) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		DeleteBatch(w, r, tasksDelCh)
+	}
+}
+
+func DeleteBatch(w http.ResponseWriter, r *http.Request, tasksDelCh chan<- schemasshortener.Task) {
+	ctx := r.Context()
+	userID, err := logrequest.GetUserID(ctx)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+	var batchID []string
+	var buf bytes.Buffer
+
+	// читаем тело запроса
+	_, err = buf.ReadFrom(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err = json.Unmarshal(buf.Bytes(), &batchID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if len(batchID) == 0 {
+		http.Error(w, "Batch of ID cannot be empty", http.StatusBadRequest)
+		return
+	}
+
+	err = service.Shortener.MarkOnDeleteBatch(ctx, userID, batchID)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error("Failed to get all users short url", "error", err)
+		return
+	}
+
+	for _, item := range batchID{
+		tasksDelCh <- schemasshortener.Task{UserID: userID, Data: item}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
 }
