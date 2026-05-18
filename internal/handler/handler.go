@@ -10,15 +10,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gearwheels/go_url_shortener/internal/audit"
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
 	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	"github.com/gearwheels/go_url_shortener/internal/service"
 )
-
-// Auditor рассылает события аудита наблюдателям; устанавливается в main.go
-var Auditor *audit.Auditor
 
 func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
@@ -78,7 +74,6 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, shortenedURL)
 
 	slog.Info("Created short URL", "short_url", shortenedURL, "original", originalURL)
-	Auditor.Notify(audit.Event{Action: "shorten", UserID: userID, URL: originalURL})
 }
 
 func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +137,6 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(resp)
 
 	slog.Info("Created short URL", "short_url", shortenedURL, "original", request.URL)
-	Auditor.Notify(audit.Event{Action: "shorten", UserID: userID, URL: request.URL})
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request) {
@@ -167,8 +161,6 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	}
 
-	userID, _ := logrequest.GetUserID(r.Context())
-	Auditor.Notify(audit.Event{Action: "follow", UserID: userID, URL: originalURL})
 	slog.Info("Redirecting", "id", id, "location", originalURL)
 }
 
