@@ -266,7 +266,10 @@ func (r *URLShortener) UpdateFile(data string) error {
 	}
 	defer file.Close()
 
-	info, _ := os.Stat(config.AppConfig.PathStoreURL)
+	info, err := os.Stat(config.AppConfig.PathStoreURL)
+	if err != nil {
+		return err
+	}
 
 	writer := bufio.NewWriter(file)
 	if info.Size() != 0 {

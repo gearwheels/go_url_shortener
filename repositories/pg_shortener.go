@@ -133,7 +133,10 @@ func (r *URLPostgresRepository) Delete(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	rows, _ := result.RowsAffected()
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
 	if rows == 0 {
 		return sql.ErrNoRows
 	}
