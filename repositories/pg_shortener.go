@@ -1,3 +1,7 @@
+// Package repository реализует уровень доступа к данным для сервиса сокращения URL.
+// Содержит две реализации ShortenerRepository:
+//   - URLShortener — in-memory хранилище с персистентностью через файл.
+//   - URLPostgresRepository — PostgreSQL хранилище на основе sqlx.
 package repository
 
 import (
@@ -8,27 +12,47 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// URL хранит данные одной записи сокращённого адреса.
 type URL struct {
-	ID          int64  `db:"id"`
-	URL         string `db:"url"`
-	ShortURL    string `db:"short_url"`
-	UserID      string `db:"user_id"`
-	DeletedFlag bool   `db:"is_deleted"`
+	// ID — суррогатный ключ (автоинкремент в БД, счётчик в памяти).
+	ID int64 `db:"id"`
+	// URL — оригинальный длинный адрес.
+	URL string `db:"url"`
+	// ShortURL — короткий идентификатор (случайная строка).
+	ShortURL string `db:"short_url"`
+	// UserID — идентификатор пользователя-владельца.
+	UserID string `db:"user_id"`
+	// DeletedFlag — true, если ссылка помечена на удаление (soft delete).
+	DeletedFlag bool `db:"is_deleted"`
 }
 
+// ShortenerRepository определяет контракт хранилища коротких URL.
+// Реализуется как in-memory (URLShortener), так и Postgres (URLPostgresRepository).
 type ShortenerRepository interface {
-	CreateBatch(ctx context.Context, URLBatch []URL) (err error)
+	// Create сохраняет новую запись и возвращает shortCode.
+	// Если URL уже существует, возвращает существующий shortCode и inserted=false.
 	Create(ctx context.Context, url URL) (shortCode string, inserted bool, err error)
+	// CreateBatch сохраняет несколько записей в одной транзакции.
+	CreateBatch(ctx context.Context, URLBatch []URL) (err error)
+	// GetByID ищет запись по числовому ID.
 	GetByID(ctx context.Context, id int64) (URL, error)
+	// GetByURL ищет запись по оригинальному URL.
 	GetByURL(ctx context.Context, url string) (URL, error)
+	// GetByShortURL ищет запись по короткому идентификатору.
 	GetByShortURL(ctx context.Context, shortURL string) (URL, error)
+	// Delete удаляет запись по числовому ID.
 	Delete(ctx context.Context, id int64) error
+	// List возвращает все записи, отсортированные по ID.
 	List(ctx context.Context) ([]URL, error)
+	// GetListURLByUserID возвращает все ссылки указанного пользователя.
 	GetListURLByUserID(ctx context.Context, userID string) ([]URL, error)
+	// UpdateIsDelete помечает список коротких URL пользователя как удалённые.
 	UpdateIsDelete(ctx context.Context, userID string, shortIDs []string) error
+	// DeleteByShortURL физически удаляет запись по short_url и userID.
 	DeleteByShortURL(ctx context.Context, userID string, shortURL string) error
 }
 
+// URLPostgresRepository — реализация ShortenerRepository поверх PostgreSQL.
 type URLPostgresRepository struct {
 	db *sqlx.DB
 }
@@ -61,6 +85,7 @@ func (r *URLPostgresRepository) GetListURLByUserID(ctx context.Context, userID s
 	return list, err
 }
 
+// GetTx открывает новую транзакцию базы данных.
 func (r *URLPostgresRepository) GetTx() (*sql.Tx, error) {
 	return r.db.Begin()
 }
@@ -149,6 +174,8 @@ func (r *URLPostgresRepository) DeleteByShortURL(ctx context.Context, userID str
 	return err
 }
 
+// DeleteByShortURLInTx физически удаляет запись в рамках существующей транзакции tx.
+// Используется воркером фонового удаления для батчинга нескольких операций.
 func (r *URLPostgresRepository) DeleteByShortURLInTx(ctx context.Context, tx *sql.Tx, userID string, shortURL string) error {
 	query := `DELETE FROM urls WHERE user_id = $1 AND short_url = $2`
 	_, err := tx.ExecContext(ctx, query, userID, shortURL)

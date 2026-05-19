@@ -1,3 +1,5 @@
+// Package service содержит бизнес-логику сервиса сокращения URL.
+// Точка входа — NewShortenerService; для выбора реализации (in-memory или Postgres) используйте GetService.
 package service
 
 import (
@@ -90,12 +92,22 @@ func padBase62(val uint64, length int) string {
 // URLShortenerInterface определяет методы сервиса сокращения URL,
 // которые использует слой handler.
 type URLShortenerInterface interface {
+	// ShortenURL сохраняет originalURL и возвращает shortCode.
+	// inserted=false означает, что URL уже существовал (дедупликация).
 	ShortenURL(ctx context.Context, originalURL string, userID string) (string, bool, error)
+	// GetOriginalURL возвращает оригинальный URL по shortCode.
+	// Второй результат — флаг мягкого удаления (deleted=true → HTTP 410).
 	GetOriginalURL(ctx context.Context, id string) (string, bool, error)
+	// ShortenURLBatch обрабатывает пакет URL параллельно и сохраняет их батчем.
 	ShortenURLBatch(ctx context.Context, batchURL []schemasshortener.RequestBatchURLSchema, userID string) ([]schemasshortener.ResponseBatchURLSchema, error)
+	// GenerateID генерирует случайный 10-символьный идентификатор через crypto/rand.
 	GenerateID() string
+	// GetAllShortenerURL возвращает все ссылки, созданные указанным пользователем.
 	GetAllShortenerURL(ctx context.Context, userID string) ([]repo.URL, error)
+	// MarkOnDeleteBatch помечает список коротких URL пользователя как удалённые (soft delete).
 	MarkOnDeleteBatch(ctx context.Context, userID string, listID []string) error
+	// WorkerDeleteFromURLTable воркер фонового удаления: читает задания из tasksDelCh
+	// и физически удаляет записи, батчируя по 20 операций в транзакцию (Postgres).
 	WorkerDeleteFromURLTable(tasksDelCh <-chan schemasshortener.Task, wg *sync.WaitGroup)
 }
 
@@ -284,7 +296,8 @@ func isShortURLCollision(err error) bool {
 	return err != nil && err.Error() == "short_url already exists"
 }
 
-// GetService выбирает репозиторий (Postgres или in-memory) и возвращает сервис.
+// GetService создаёт сервис с нужным репозиторием.
+// Если pgExist=true и db — *sqlx.DB, использует PostgreSQL; иначе — in-memory с загрузкой из файла.
 func GetService(pgExist bool, db interface{}) URLShortenerInterface {
 	if pgExist {
 		if dbConn, ok := db.(*sqlx.DB); ok {

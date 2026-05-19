@@ -28,9 +28,10 @@ func buildFileEntry(shortURL, originalURL string) string {
 	return sb.String()
 }
 
-// URLShortener — in-memory репозиторий.
-// Репозиторий отвечает только за хранение/чтение данных и НЕ содержит бизнес-логики
-// (генерации ID, правил дедупликации и т.п.).
+// URLShortener — потокобезопасный in-memory репозиторий.
+// Хранит данные в трёх индексах (byID, byURL, byShort) для O(1)-доступа по любому ключу.
+// Поддерживает персистентность через файл-хранилище (UpdateFile / ExtractFromFile).
+// Не содержит бизнес-логики — генерация ID и дедупликация — ответственность сервисного слоя.
 type URLShortener struct {
 	mu sync.RWMutex
 
@@ -41,6 +42,7 @@ type URLShortener struct {
 	UserID  map[string]int64
 }
 
+// NewRepoShortener создаёт пустой in-memory репозиторий.
 func NewRepoShortener() *URLShortener {
 	return &URLShortener{
 		nextID:  1,

@@ -1,3 +1,11 @@
+// Package audit реализует паттерн «Наблюдатель» для аудита событий сервиса.
+// Auditor — субъект; FileObserver и HTTPObserver — конкретные наблюдатели.
+// Пример подключения:
+//
+//	a := audit.NewAuditor()
+//	a.Subscribe(audit.NewFileObserver("/var/log/audit.log"))
+//	a.Subscribe(audit.NewHTTPObserver("https://collector.example.com/events"))
+//	a.Notify(audit.Event{Action: "shorten", URL: "https://example.com"})
 package audit
 
 import (
@@ -10,7 +18,8 @@ import (
 	"time"
 )
 
-// Event — событие аудита
+// Event описывает единицу аудита: действие пользователя над URL.
+// Поле Ts заполняется автоматически при вызове Auditor.Notify.
 type Event struct {
 	Ts     int64  `json:"ts"`
 	Action string `json:"action"`
@@ -18,20 +27,25 @@ type Event struct {
 	URL    string `json:"url"`
 }
 
-// Observer — интерфейс наблюдателя
+// Observer — интерфейс наблюдателя. Реализуйте его для подключения
+// произвольного приёмника событий аудита.
 type Observer interface {
 	Notify(event Event)
 }
 
-// Auditor — субъект паттерна «Наблюдатель», рассылает события всем подписчикам
+// Auditor — субъект паттерна «Наблюдатель».
+// Хранит список наблюдателей и доставляет им каждое событие.
+// Безопасен при nil-получателе: вызов методов на nil не паникует.
 type Auditor struct {
 	observers []Observer
 }
 
+// NewAuditor возвращает новый пустой Auditor без наблюдателей.
 func NewAuditor() *Auditor {
 	return &Auditor{}
 }
 
+// Subscribe добавляет наблюдателя в список рассылки.
 func (a *Auditor) Subscribe(obs Observer) {
 	a.observers = append(a.observers, obs)
 }
@@ -47,11 +61,13 @@ func (a *Auditor) Notify(event Event) {
 	}
 }
 
-// FileObserver — записывает события аудита в файл (append)
+// FileObserver записывает события аудита в файл построчно (режим append).
+// Каждая строка — JSON-объект типа Event.
 type FileObserver struct {
 	path string
 }
 
+// NewFileObserver создаёт FileObserver, пишущий в файл по пути path.
 func NewFileObserver(path string) *FileObserver {
 	return &FileObserver{path: path}
 }
@@ -71,11 +87,13 @@ func (f *FileObserver) Notify(event Event) {
 	fmt.Fprintln(file, string(data))
 }
 
-// HTTPObserver — отправляет событие аудита на удалённый сервер методом POST
+// HTTPObserver отправляет каждое событие аудита на удалённый HTTP-сервер
+// методом POST с Content-Type: application/json.
 type HTTPObserver struct {
 	url string
 }
 
+// NewHTTPObserver создаёт HTTPObserver, отправляющий события на указанный URL.
 func NewHTTPObserver(url string) *HTTPObserver {
 	return &HTTPObserver{url: url}
 }
