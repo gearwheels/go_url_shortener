@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/gearwheels/go_url_shortener/internal/config"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
 	"github.com/gearwheels/go_url_shortener/internal/service"
 	repo "github.com/gearwheels/go_url_shortener/repositories"
@@ -14,9 +17,18 @@ import (
 
 func initBenchHandler(b *testing.B) {
 	b.Helper()
+	if config.AppConfig == nil {
+		dir, err := os.MkdirTemp("", "bench_handler")
+		if err != nil {
+			b.Fatalf("MkdirTemp: %v", err)
+		}
+		config.Init("localhost:8080", "http://localhost:8080/",
+			filepath.Join(dir, "store.txt"), "", "bench-secret", "", "")
+	}
 	if service.Shortener == nil {
 		service.Shortener = service.NewShortenerService(repo.NewRepoShortener())
 	}
+	Auditor = nil
 }
 
 func BenchmarkShortenHandler(b *testing.B) {
