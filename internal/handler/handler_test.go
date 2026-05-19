@@ -340,9 +340,9 @@ func TestRedirectHandler_RootPath(t *testing.T) {
 func TestJSONShortenHandler_ContentType(t *testing.T) {
 
 	tests := []struct {
-		name         string
-		contentType  string
-		expectedOk   []int
+		name        string
+		contentType string
+		expectedOk  []int
 	}{
 		{"Valid JSON", "application/json", []int{http.StatusCreated, http.StatusConflict}},
 		{"Invalid plain text", "text/plain", []int{http.StatusUnsupportedMediaType}},

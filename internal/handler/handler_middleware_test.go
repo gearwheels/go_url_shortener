@@ -20,8 +20,8 @@ import (
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
-	"github.com/gearwheels/go_url_shortener/internal/service"
 	schemasShortener "github.com/gearwheels/go_url_shortener/internal/schemas"
+	"github.com/gearwheels/go_url_shortener/internal/service"
 )
 
 // testStoragePath — путь к временному файлу хранилища для тестов (не зависит от CWD)
@@ -209,7 +209,6 @@ func TestRouterWithMiddleware_Redirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to shorten URL: %v", err)
 	}
-
 
 	req := httptest.NewRequest(http.MethodGet, "/"+id, nil)
 	rr := httptest.NewRecorder()

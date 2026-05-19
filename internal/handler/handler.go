@@ -259,7 +259,7 @@ func UserURL(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, err := logrequest.GetUserID(ctx)
 	if err != nil {
-		http.Error(w,  http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
@@ -334,7 +334,7 @@ func DeleteBatch(w http.ResponseWriter, r *http.Request, tasksDelCh chan<- schem
 		return
 	}
 
-	for _, item := range batchID{
+	for _, item := range batchID {
 		tasksDelCh <- schemasshortener.Task{UserID: userID, Data: item}
 	}
 
