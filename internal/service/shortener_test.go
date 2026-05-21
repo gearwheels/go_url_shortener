@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
+	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	repo "github.com/gearwheels/go_url_shortener/repositories"
 )
 
@@ -158,5 +160,153 @@ func TestURLShortener_ShortenURL(t *testing.T) {
 	}
 	if !inserted3 {
 		t.Error("Expected inserted=true for new second URL")
+	}
+}
+
+func TestGenerateUniqueID_Uniqueness(t *testing.T) {
+	seen := make(map[string]struct{}, 1000)
+	for i := 0; i < 1000; i++ {
+		id := GenerateUniqueID()
+		if _, dup := seen[id]; dup {
+			t.Fatalf("duplicate GenerateUniqueID at iteration %d: %s", i, id)
+		}
+		seen[id] = struct{}{}
+		if len(id) != 10 {
+			t.Fatalf("expected length 10, got %d (%s)", len(id), id)
+		}
+	}
+}
+
+func TestPadBase62(t *testing.T) {
+	// padBase62 always returns partLen (5) characters
+	cases := []uint64{0, 1, 61, 62, 62*62*62*62*62 - 1}
+	for _, val := range cases {
+		got := padBase62(val, partLen)
+		if len(got) != partLen {
+			t.Errorf("padBase62(%d): len=%d, want %d", val, len(got), partLen)
+		}
+	}
+}
+
+func TestGetAllShortenerURL(t *testing.T) {
+	svc := newTestService()
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		_, _, err := svc.ShortenURL(ctx, fmt.Sprintf("https://example.com/u%d", i), "user-a")
+		if err != nil {
+			t.Fatalf("ShortenURL: %v", err)
+		}
+	}
+	_, _, _ = svc.ShortenURL(ctx, "https://other.com", "user-b")
+
+	urls, err := svc.GetAllShortenerURL(ctx, "user-a")
+	if err != nil {
+		t.Fatalf("GetAllShortenerURL: %v", err)
+	}
+	if len(urls) != 5 {
+		t.Errorf("expected 5 URLs for user-a, got %d", len(urls))
+	}
+
+	urls2, err := svc.GetAllShortenerURL(ctx, "user-b")
+	if err != nil {
+		t.Fatalf("GetAllShortenerURL user-b: %v", err)
+	}
+	if len(urls2) != 1 {
+		t.Errorf("expected 1 URL for user-b, got %d", len(urls2))
+	}
+}
+
+func TestShortenURLBatch(t *testing.T) {
+	svc := newTestService()
+	ctx := context.Background()
+
+	batch := []schemasshortener.RequestBatchURLSchema{
+		{CorrelationID: "1", OriginalURL: "https://example.com/a"},
+		{CorrelationID: "2", OriginalURL: "https://example.com/b"},
+		{CorrelationID: "3", OriginalURL: "example.com/c"},
+	}
+
+	resp, err := svc.ShortenURLBatch(ctx, batch, "u1")
+	if err != nil {
+		t.Fatalf("ShortenURLBatch: %v", err)
+	}
+	if len(resp) != 3 {
+		t.Fatalf("expected 3 responses, got %d", len(resp))
+	}
+	for i, r := range resp {
+		if r.ShortURL == "" {
+			t.Errorf("response[%d]: empty short_url", i)
+		}
+	}
+
+	// empty batch returns empty slice without error
+	resp2, err := svc.ShortenURLBatch(ctx, nil, "u1")
+	if err != nil {
+		t.Fatalf("empty batch error: %v", err)
+	}
+	if len(resp2) != 0 {
+		t.Errorf("expected 0 responses for empty batch, got %d", len(resp2))
+	}
+}
+
+func TestMarkOnDeleteBatch(t *testing.T) {
+	svc := newTestService()
+	ctx := context.Background()
+
+	id1, _, _ := svc.ShortenURL(ctx, "https://example.com/del1", "u1")
+	id2, _, _ := svc.ShortenURL(ctx, "https://example.com/del2", "u1")
+
+	if err := svc.MarkOnDeleteBatch(ctx, "u1", []string{id1, id2}); err != nil {
+		t.Fatalf("MarkOnDeleteBatch: %v", err)
+	}
+
+	_, deleted, err := svc.GetOriginalURL(ctx, id1)
+	if err != nil {
+		t.Fatalf("GetOriginalURL: %v", err)
+	}
+	if !deleted {
+		t.Error("expected id1 to be marked deleted")
+	}
+
+	// empty list is a no-op
+	if err := svc.MarkOnDeleteBatch(ctx, "u1", nil); err != nil {
+		t.Fatalf("MarkOnDeleteBatch nil: %v", err)
+	}
+}
+
+func TestIsShortURLCollision(t *testing.T) {
+	if isShortURLCollision(nil) {
+		t.Error("nil should not be a collision")
+	}
+	if !isShortURLCollision(errors.New("short_url already exists")) {
+		t.Error("expected collision for 'short_url already exists'")
+	}
+	if isShortURLCollision(errors.New("some other error")) {
+		t.Error("other errors should not be a collision")
+	}
+}
+
+func TestIsUniqueViolation(t *testing.T) {
+	if isUniqueViolation(nil) {
+		t.Error("nil error should not be a unique violation")
+	}
+	if isUniqueViolation(errors.New("some error")) {
+		t.Error("generic error should not be a unique violation")
+	}
+}
+
+func TestGetService_InMemory(t *testing.T) {
+	svc := GetService(false, nil)
+	if svc == nil {
+		t.Fatal("expected non-nil service")
+	}
+	ctx := context.Background()
+	id, inserted, err := svc.ShortenURL(ctx, "https://getservice.test/", "u")
+	if err != nil {
+		t.Fatalf("ShortenURL via GetService: %v", err)
+	}
+	if id == "" || !inserted {
+		t.Error("expected valid id and inserted=true")
 	}
 }

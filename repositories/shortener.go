@@ -6,13 +6,27 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"cmp"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 
 	config "github.com/gearwheels/go_url_shortener/internal/config"
 )
+
+// buildFileEntry формирует строку вида `"shortURL": "originalURL"` для файла-хранилища.
+// Использует strings.Builder — одна аллокация вместо четырёх конкатенаций.
+func buildFileEntry(shortURL, originalURL string) string {
+	var sb strings.Builder
+	sb.Grow(len(shortURL) + len(originalURL) + 6)
+	sb.WriteByte('"')
+	sb.WriteString(shortURL)
+	sb.WriteString(`": "`)
+	sb.WriteString(originalURL)
+	sb.WriteByte('"')
+	return sb.String()
+}
 
 // URLShortener — in-memory репозиторий.
 // Репозиторий отвечает только за хранение/чтение данных и НЕ содержит бизнес-логики
@@ -69,7 +83,7 @@ func (r *URLShortener) Create(ctx context.Context, u URL) (shortCode string, ins
 	r.byURL[u.URL] = u.ID
 	r.byShort[u.ShortURL] = u.ID
 
-	_ = r.UpdateFile("\"" + u.ShortURL + "\": \"" + u.URL + "\"")
+	_ = r.UpdateFile(buildFileEntry(u.ShortURL, u.URL))
 	return u.ShortURL, true, nil
 }
 
@@ -86,7 +100,7 @@ func (r *URLShortener) CreateBatch(ctx context.Context, uBatch []URL) (err error
 		r.byURL[u.URL] = u.ID
 		r.byShort[u.ShortURL] = u.ID
 
-		_ = r.UpdateFile("\"" + u.ShortURL + "\": \"" + u.URL + "\"")
+		_ = r.UpdateFile(buildFileEntry(u.ShortURL, u.URL))
 	}
 	return nil
 }
@@ -163,7 +177,7 @@ func (r *URLShortener) List(ctx context.Context) ([]URL, error) {
 	for id := range r.byID {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.SortFunc(ids, func(a, b int64) int { return cmp.Compare(a, b) })
 
 	out := make([]URL, 0, len(ids))
 	for _, id := range ids {
@@ -204,15 +218,8 @@ func (r *URLShortener) GetListURLByUserID(ctx context.Context, userID string) ([
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	ids := make([]int64, 0, len(r.byID))
-	for id := range r.byID {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-
-	out := make([]URL, 0)
-	for _, id := range ids {
-		u := r.byID[id]
+	out := make([]URL, 0, len(r.byID)/4+1)
+	for _, u := range r.byID {
 		if u.UserID == userID {
 			out = append(out, u)
 		}
@@ -305,7 +312,7 @@ func (r *URLShortener) ExtractFromFile() error {
 		return err
 	}
 
-	if len(content.String()) != 0 {
+	if content.Len() != 0 {
 		r.FreeStore()
 		jsonStr := "{" + content.String() + "}"
 		var flat map[string]string

@@ -42,3 +42,48 @@ git fetch template && git checkout template/v2 .github
 - **Clean Architecture**
 - **Hexagonal Architecture**
 - **Layered Architecture**
+
+## Профилирование памяти (pprof)
+
+Базовый профиль снят командой:
+
+```sh
+go test -run=^$ -bench=. -benchmem -memprofile=profiles/base.pprof ./internal/service/
+```
+
+После оптимизаций снят итоговый профиль:
+
+```sh
+go test -run=^$ -bench=. -benchmem -memprofile=profiles/result.pprof ./internal/service/
+```
+
+### Diff между базовым и итоговым профилями
+
+```sh
+go tool pprof -top -diff_base=profiles/base.pprof profiles/result.pprof
+```
+
+```text
+File: service.test.exe
+Type: alloc_space
+Showing nodes accounting for 2941.49MB, 101.89% of 2886.97MB total
+Dropped 81 nodes (cum <= 14.43MB)
+      flat  flat%   sum%        cum   cum%
+ 2983.99MB 103.36% 103.36%  2982.49MB 103.31%  repositories.(*URLShortener).GetListURLByUserID
+ -305.50MB -10.58%  92.78%   -42.50MB  -1.47%  service.GenerateUniqueID
+     211MB   7.31% 100.09%      263MB   9.11%  service.padBase62
+      52MB   1.80% 101.89%       52MB   1.80%  service.encodeBase62 (inline)
+```
+
+### Что изменилось
+
+| Бенчмарк | ns/op до | ns/op после | B/op до | B/op после | allocs/op до | allocs/op после |
+| --- | --- | --- | --- | --- | --- | --- |
+| `BenchmarkGetAllShortenerURL` | 21 802 | 7 339 | 41 336 | 23 808 | 12 | 3 |
+| `BenchmarkGenerateUniqueID` | 58.56 | 45.96 | 16 | 11 | 1 | 1 |
+
+**`GetListURLByUserID`** — удалена промежуточная сортированная slice: теперь итерация идёт прямо по `byID`, без дополнительных аллокаций.
+
+**`GenerateUniqueID`** — функция `padBase62` использует стековый массив `[5]byte` вместо конкатенации строк на heap.
+
+**`GenerateID`** — буфер `[]byte` для `crypto/rand` переиспользуется через `sync.Pool`.
