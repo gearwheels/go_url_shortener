@@ -2,11 +2,11 @@ package repository
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"cmp"
 	"os"
 	"slices"
 	"strings"
@@ -104,7 +104,6 @@ func (r *URLShortener) CreateBatch(ctx context.Context, uBatch []URL) (err error
 	}
 	return nil
 }
-
 
 func (r *URLShortener) GetByID(ctx context.Context, id int64) (URL, error) {
 	_ = ctx
@@ -331,4 +330,3 @@ func (r *URLShortener) ExtractFromFile() error {
 	}
 	return nil
 }
-
