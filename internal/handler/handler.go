@@ -1,3 +1,14 @@
+// Package handler содержит HTTP-обработчики сервиса сокращения URL.
+//
+// Маршруты:
+//
+//	POST /                      — ShortenHandler         (text/plain)
+//	POST /api/shorten           — JSONShortenHandler      (application/json)
+//	POST /api/shorten/batch     — ShortenBatchHandler     (application/json)
+//	GET  /{id}                  — RedirectHandler
+//	GET  /ping                  — CheckDBStatus
+//	GET  /api/user/urls         — UserURL
+//	DELETE /api/user/urls       — DeleteBatchHandler
 package handler
 
 import (
@@ -17,9 +28,14 @@ import (
 	"github.com/gearwheels/go_url_shortener/internal/service"
 )
 
-// Auditor рассылает события аудита наблюдателям; устанавливается в main.go
+// Auditor рассылает события аудита наблюдателям; устанавливается в main.go.
 var Auditor *audit.Auditor
 
+// ShortenHandler обрабатывает POST / с телом text/plain.
+// Принимает оригинальный URL, возвращает короткую ссылку в теле ответа.
+//
+//	201 Created  — ссылка создана впервые.
+//	409 Conflict — ссылка для этого URL уже существует (возвращает существующую).
 func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.URL.Path != "/" {
@@ -81,6 +97,12 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	Auditor.Notify(audit.Event{Action: "shorten", UserID: userID, URL: originalURL})
 }
 
+// JSONShortenHandler обрабатывает POST /api/shorten с телом application/json.
+// Тело запроса: {"url":"https://..."}.
+// Тело ответа: {"result":"http://base/<id>"}.
+//
+//	201 Created  — ссылка создана впервые.
+//	409 Conflict — ссылка для этого URL уже существует.
 func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	contentType := r.Header.Get("Content-Type")
@@ -149,6 +171,12 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	Auditor.Notify(audit.Event{Action: "shorten", UserID: userID, URL: request.URL})
 }
 
+// RedirectHandler обрабатывает GET /{id}.
+// Извлекает оригинальный URL по короткому идентификатору и перенаправляет клиента.
+//
+//	307 Temporary Redirect — успешное перенаправление.
+//	410 Gone               — ссылка удалена.
+//	404 Not Found          — ссылка не найдена.
 func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	// Извлекаем ID из пути (убираем ведущий слэш)
 	id := strings.TrimPrefix(r.URL.Path, "/")
@@ -179,6 +207,8 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Redirecting", "id", id, "location", originalURL)
 }
 
+// CheckDBStatus обрабатывает GET /ping.
+// Проверяет доступность базы данных и возвращает 200 OK или 500 Internal Server Error.
 func CheckDBStatus(w http.ResponseWriter, r *http.Request) {
 
 	db, err := sql.Open("pgx", config.AppConfig.DatabaseDsn)
@@ -198,6 +228,11 @@ func CheckDBStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ShortenBatchHandler обрабатывает POST /api/shorten/batch.
+// Принимает массив объектов {"correlation_id","original_url"} и возвращает
+// массив {"correlation_id","short_url"}.
+//
+//	201 Created — все ссылки созданы.
 func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "application/json" {
@@ -250,11 +285,18 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(resp)
 }
 
+// userURLItem — элемент JSON-ответа для GET /api/user/urls.
 type userURLItem struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 }
 
+// UserURL обрабатывает GET /api/user/urls.
+// Возвращает список всех коротких ссылок аутентифицированного пользователя.
+//
+//	200 OK         — список ссылок в формате [{"short_url","original_url"},...].
+//	204 No Content — у пользователя нет ссылок.
+//	401 Unauthorized — пользователь не аутентифицирован.
 func UserURL(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID, err := logrequest.GetUserID(ctx)
@@ -294,12 +336,18 @@ func UserURL(w http.ResponseWriter, r *http.Request) {
 	w.Write(resp)
 }
 
+// DeleteBatchHandler возвращает http.HandlerFunc для DELETE /api/user/urls.
+// tasksDelCh — канал, в который передаются задания воркеру фонового удаления.
 func DeleteBatchHandler(tasksDelCh chan<- schemasshortener.Task) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		DeleteBatch(w, r, tasksDelCh)
 	}
 }
 
+// DeleteBatch — реализация DELETE /api/user/urls.
+// Помечает ссылки как удалённые и отправляет задания на физическое удаление в tasksDelCh.
+//
+//	202 Accepted — задание принято, удаление произойдёт асинхронно.
 func DeleteBatch(w http.ResponseWriter, r *http.Request, tasksDelCh chan<- schemasshortener.Task) {
 	ctx := r.Context()
 	userID, err := logrequest.GetUserID(ctx)

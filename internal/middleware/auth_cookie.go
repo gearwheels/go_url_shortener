@@ -1,3 +1,5 @@
+// Package logrequest содержит middleware и вспомогательные функции для работы
+// с аутентификацией через HMAC-подписанные cookie и контекстом запроса.
 package logrequest
 
 import (
@@ -32,6 +34,9 @@ var (
 	ErrUserIDWrongType    = errors.New("userID in context has wrong type")
 )
 
+// GetUserID извлекает идентификатор пользователя из контекста запроса.
+// Контекст заполняется в AuthMiddleware или через ContextWithUserID (в тестах).
+// Возвращает ErrUserIDNotInContext, если ключ отсутствует или пустой.
 func GetUserID(ctx context.Context) (string, error) {
 	v := ctx.Value(userIDKey)
 	if v == nil {
@@ -102,7 +107,9 @@ func setAuthCookie(w http.ResponseWriter, userID string) {
 	})
 }
 
-// AuthMiddleware проверяет/устанавливает cookie и добавляет userID в контекст
+// AuthMiddleware проверяет HMAC-подписанную cookie «auth».
+// При отсутствии или невалидной cookie генерирует новый UUID и устанавливает новую cookie.
+// Во всех случаях помещает userID в контекст запроса для последующего чтения через GetUserID.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var userID string
