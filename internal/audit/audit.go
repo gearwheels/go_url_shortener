@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -63,39 +64,62 @@ func (a *Auditor) Notify(event Event) {
 
 // FileObserver записывает события аудита в файл построчно (режим append).
 // Каждая строка — JSON-объект типа Event.
+// Файл открывается один раз в конструкторе и остаётся открытым,
+// что исключает накладные расходы на open/close при каждом вызове Notify.
 type FileObserver struct {
-	path string
+	file *os.File
+	mu   sync.Mutex
 }
 
 // NewFileObserver создаёт FileObserver, пишущий в файл по пути path.
+// Если файл не удаётся открыть, возвращается наблюдатель в нерабочем состоянии —
+// вызовы Notify будут молча игнорироваться (без паники).
 func NewFileObserver(path string) *FileObserver {
-	return &FileObserver{path: path}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		slog.Error("audit: open file error", "error", err)
+		return &FileObserver{}
+	}
+	return &FileObserver{file: file}
+}
+
+// Close закрывает файл аудита. Вызывайте при завершении приложения.
+func (f *FileObserver) Close() error {
+	if f.file == nil {
+		return nil
+	}
+	return f.file.Close()
 }
 
 func (f *FileObserver) Notify(event Event) {
+	if f.file == nil {
+		return
+	}
 	data, err := json.Marshal(event)
 	if err != nil {
 		slog.Error("audit: marshal error", "error", err)
 		return
 	}
-	file, err := os.OpenFile(f.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		slog.Error("audit: open file error", "error", err)
-		return
-	}
-	defer file.Close()
-	fmt.Fprintln(file, string(data))
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fmt.Fprintln(f.file, string(data))
 }
 
 // HTTPObserver отправляет каждое событие аудита на удалённый HTTP-сервер
 // методом POST с Content-Type: application/json.
+// Использует http.Client с таймаутом 5 секунд, чтобы недоступный сервер
+// не блокировал обработчик запроса.
 type HTTPObserver struct {
-	url string
+	url    string
+	client *http.Client
 }
 
 // NewHTTPObserver создаёт HTTPObserver, отправляющий события на указанный URL.
 func NewHTTPObserver(url string) *HTTPObserver {
-	return &HTTPObserver{url: url}
+	return &HTTPObserver{
+		url:    url,
+		client: &http.Client{Timeout: 5 * time.Second},
+	}
 }
 
 func (h *HTTPObserver) Notify(event Event) {
@@ -104,7 +128,7 @@ func (h *HTTPObserver) Notify(event Event) {
 		slog.Error("audit: marshal error", "error", err)
 		return
 	}
-	resp, err := http.Post(h.url, "application/json", bytes.NewReader(data))
+	resp, err := h.client.Post(h.url, "application/json", bytes.NewReader(data))
 	if err != nil {
 		slog.Error("audit: http send error", "error", err)
 		return
