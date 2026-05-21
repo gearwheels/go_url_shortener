@@ -43,7 +43,8 @@ func readLines(t *testing.T, path string) []string {
 func TestFileObserver_CreatesFile(t *testing.T) {
 	path := tempFile(t)
 	obs := NewFileObserver(path)
-	obs.Notify(Event{TS: 1, Action: "shorten", URL: "https://example.com"})
+	defer obs.Close()
+	obs.Notify(Event{Ts: 1, Action: "shorten", URL: "https://example.com"})
 
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected file to be created: %v", err)
@@ -53,7 +54,8 @@ func TestFileObserver_CreatesFile(t *testing.T) {
 func TestFileObserver_WritesValidJSON(t *testing.T) {
 	path := tempFile(t)
 	obs := NewFileObserver(path)
-	obs.Notify(Event{TS: 111, Action: "shorten", UserID: "u1", URL: "https://a.com"})
+	defer obs.Close()
+	obs.Notify(Event{Ts: 111, Action: "shorten", UserID: "u1", URL: "https://a.com"})
 
 	lines := readLines(t, path)
 	if len(lines) != 1 {
@@ -78,6 +80,7 @@ func TestFileObserver_WritesValidJSON(t *testing.T) {
 func TestFileObserver_AppendsNewLines(t *testing.T) {
 	path := tempFile(t)
 	obs := NewFileObserver(path)
+	defer obs.Close()
 	obs.Notify(Event{Action: "shorten", URL: "https://a.com"})
 	obs.Notify(Event{Action: "follow", URL: "https://b.com"})
 	obs.Notify(Event{Action: "shorten", URL: "https://c.com"})
@@ -102,6 +105,7 @@ func TestFileObserver_AppendsNewLines(t *testing.T) {
 func TestFileObserver_OmitsEmptyUserID(t *testing.T) {
 	path := tempFile(t)
 	obs := NewFileObserver(path)
+	defer obs.Close()
 	obs.Notify(Event{Action: "follow", URL: "https://x.com"})
 
 	lines := readLines(t, path)
@@ -280,7 +284,9 @@ func TestAuditor_EventFieldsPassedThrough(t *testing.T) {
 func TestAuditor_WithFileObserver(t *testing.T) {
 	path := tempFile(t)
 	a := NewAuditor()
-	a.Subscribe(NewFileObserver(path))
+	fo := NewFileObserver(path)
+	defer fo.Close()
+	a.Subscribe(fo)
 
 	a.Notify(Event{Action: "shorten", UserID: "u3", URL: "https://integration.com"})
 
