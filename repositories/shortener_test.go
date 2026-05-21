@@ -15,7 +15,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	path := filepath.Join(dir, "store_url.txt")
-	config.Init("localhost:8888", "http://localhost:8000/", path, "postgres://shortener:shortener@localhost:5432/shortener", "test-secret")
+	config.Init("localhost:8888", "http://localhost:8000/", path, "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "")
 	os.Exit(m.Run())
 }
 
@@ -63,7 +63,11 @@ func TestInMemoryRepository_CRUD(t *testing.T) {
 	if err := repo.Delete(ctx, list[0].ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if after, _ := repo.List(ctx); len(after) != 0 {
+	after, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List after delete: %v", err)
+	}
+	if len(after) != 0 {
 		t.Fatalf("List after delete: expected 0, got %d", len(after))
 	}
 }
@@ -122,7 +126,10 @@ func TestInMemoryRepository_CreateBatch_Empty(t *testing.T) {
 		t.Fatalf("CreateBatch(empty): %v", err)
 	}
 
-	list, _ := repo.List(ctx)
+	list, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
 	if len(list) != 0 {
 		t.Errorf("expected 0 records, got %d", len(list))
 	}

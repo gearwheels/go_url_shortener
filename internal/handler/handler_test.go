@@ -33,7 +33,7 @@ func TestShortenHandler_ContentType(t *testing.T) {
 
 	if config.AppConfig == nil {
 		fmt.Println("AppConfig don't init")
-		config.Init("localhost:8888", "http://localhost:8000/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener", "test-secret")
+		config.Init("localhost:8888", "http://localhost:8000/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "")
 	} else {
 		fmt.Println("AppConfig has been init-ed")
 	}
@@ -355,6 +355,9 @@ func TestJSONShortenHandler_ContentType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
 			req.Header.Set("Content-Type", tt.contentType)
+			if tt.contentType == "application/json" {
+				req = req.WithContext(logrequest.ContextWithUserID(req.Context(), "test-user-id"))
+			}
 
 			rr := httptest.NewRecorder()
 			JSONShortenHandler(rr, req)
@@ -437,9 +440,13 @@ func TestJSONShortenHandler_ValidURL(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			reqBody := map[string]string{"url": tc.input}
-			bodyBytes, _ := json.Marshal(reqBody)
+			bodyBytes, err := json.Marshal(reqBody)
+			if err != nil {
+				t.Fatalf("json.Marshal: %v", err)
+			}
 			req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(string(bodyBytes)))
 			req.Header.Set("Content-Type", "application/json")
+			req = req.WithContext(logrequest.ContextWithUserID(req.Context(), "test-user-id"))
 
 			rr := httptest.NewRecorder()
 			JSONShortenHandler(rr, req)
@@ -485,6 +492,7 @@ func TestJSONShortenHandler_ResponseFormat(t *testing.T) {
 	body := `{"url":"https://go.dev/"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(logrequest.ContextWithUserID(req.Context(), "test-user-id"))
 
 	rr := httptest.NewRecorder()
 	JSONShortenHandler(rr, req)
@@ -509,7 +517,7 @@ func TestJSONShortenHandler_ResponseFormat(t *testing.T) {
 // TestShortenBatchHandler тестирует батчевое сокращение URL
 func TestShortenBatchHandler(t *testing.T) {
 	if config.AppConfig == nil {
-		config.Init("localhost:8080", "http://localhost:8080/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener", "test-secret")
+		config.Init("localhost:8080", "http://localhost:8080/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "")
 	}
 	service.Shortener = service.NewShortenerService(repo.NewRepoShortener())
 
@@ -519,6 +527,7 @@ func TestShortenBatchHandler(t *testing.T) {
 	]`
 	req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(logrequest.ContextWithUserID(req.Context(), "test-user-id"))
 
 	rr := httptest.NewRecorder()
 	ShortenBatchHandler(rr, req)

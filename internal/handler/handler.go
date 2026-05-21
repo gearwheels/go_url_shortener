@@ -10,11 +10,15 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gearwheels/go_url_shortener/internal/audit"
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
 	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	"github.com/gearwheels/go_url_shortener/internal/service"
 )
+
+// Auditor рассылает события аудита наблюдателям; устанавливается в main.go
+var Auditor *audit.Auditor
 
 func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
@@ -74,6 +78,7 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, shortenedURL)
 
 	slog.Info("Created short URL", "short_url", shortenedURL, "original", originalURL)
+	Auditor.Notify(audit.Event{Action: "shorten", UserID: userID, URL: originalURL})
 }
 
 func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +115,11 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 		request.URL = "http://" + request.URL
 	}
 
-	userID, _ := logrequest.GetUserID(r.Context())
+	userID, err := logrequest.GetUserID(r.Context())
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
 	id, inserted, err := service.Shortener.ShortenURL(r.Context(), request.URL, userID)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -137,6 +146,7 @@ func JSONShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(resp)
 
 	slog.Info("Created short URL", "short_url", shortenedURL, "original", request.URL)
+	Auditor.Notify(audit.Event{Action: "shorten", UserID: userID, URL: request.URL})
 }
 
 func RedirectHandler(w http.ResponseWriter, r *http.Request) {
@@ -161,6 +171,11 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	}
 
+	userID, err := logrequest.GetUserID(r.Context())
+	if err != nil {
+		slog.Warn("RedirectHandler: userID not in context", "error", err)
+	}
+	Auditor.Notify(audit.Event{Action: "follow", UserID: userID, URL: originalURL})
 	slog.Info("Redirecting", "id", id, "location", originalURL)
 }
 
@@ -210,7 +225,11 @@ func ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := logrequest.GetUserID(r.Context())
+	userID, err := logrequest.GetUserID(r.Context())
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
 	response, err := service.Shortener.ShortenURLBatch(r.Context(), batchURL, userID)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

@@ -16,6 +16,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 
+	"github.com/gearwheels/go_url_shortener/internal/audit"
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
@@ -55,9 +56,21 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	f := flag.String("f", "./storage/store_url.txt", "destination file")
 	d := flag.String("d", "postgres://shortener:shortener@localhost:5432/shortener", "destination database")
 	s := flag.String("s", "", "destination secret")
+	auditFile := flag.String("audit-file", "", "path to audit log file")
+	auditURL := flag.String("audit-url", "", "URL of remote audit receiver")
 	// разбор командной строки
 	flag.Parse()
-	config.Init(*a, *b, *f, *d, *s)
+	config.Init(*a, *b, *f, *d, *s, *auditFile, *auditURL)
+
+	auditor := audit.NewAuditor()
+	if config.AppConfig.AuditFile != "" {
+		auditor.Subscribe(audit.NewFileObserver(config.AppConfig.AuditFile))
+	}
+	if config.AppConfig.AuditURL != "" {
+		auditor.Subscribe(audit.NewHTTPObserver(config.AppConfig.AuditURL))
+	}
+	handler.Auditor = auditor
+
 	tasksDelCh := make(chan schemasshortener.Task, 20)
 
 	// Инициализация сервиса в зависимости от наличия базы данных

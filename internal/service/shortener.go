@@ -100,7 +100,7 @@ func NewShortenerService(r repo.ShortenerRepository) URLShortenerInterface {
 
 func (s *shortenerService) GenerateID() string {
 	b := make([]byte, 7)
-	_, _ = rand.Read(b)
+	rand.Read(b) //nolint:errcheck // crypto/rand.Read never fails on Go 1.20+
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
