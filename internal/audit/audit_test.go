@@ -35,6 +35,9 @@ func readLines(t *testing.T, path string) []string {
 			lines = append(lines, line)
 		}
 	}
+	if err := sc.Err(); err != nil {
+		t.Fatalf("scanner error: %v", err)
+	}
 	return lines
 }
 
@@ -44,7 +47,7 @@ func TestFileObserver_CreatesFile(t *testing.T) {
 	path := tempFile(t)
 	obs := NewFileObserver(path)
 	defer obs.Close()
-	obs.Notify(Event{Ts: 1, Action: "shorten", URL: "https://example.com"})
+	obs.Notify(Event{TS: 1, Action: "shorten", URL: "https://example.com"})
 
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected file to be created: %v", err)
@@ -55,7 +58,7 @@ func TestFileObserver_WritesValidJSON(t *testing.T) {
 	path := tempFile(t)
 	obs := NewFileObserver(path)
 	defer obs.Close()
-	obs.Notify(Event{Ts: 111, Action: "shorten", UserID: "u1", URL: "https://a.com"})
+	obs.Notify(Event{TS: 111, Action: "shorten", UserID: "u1", URL: "https://a.com"})
 
 	lines := readLines(t, path)
 	if len(lines) != 1 {
@@ -112,7 +115,7 @@ func TestFileObserver_OmitsEmptyUserID(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatalf("expected 1 line")
 	}
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal([]byte(lines[0]), &raw); err != nil {
 		t.Fatalf("json: %v", err)
 	}
