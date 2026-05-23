@@ -1,7 +1,7 @@
 // Package config хранит конфигурацию приложения.
 // Значения могут быть заданы флагами командной строки (через main.go)
 // или переменными окружения (SERVERADDRESS, BASEURL, FILE_STORAGE_PATH,
-// DATABASE_DSN, SECRET_KEY_FOR_JWT, AUDIT_FILE, AUDIT_URL).
+// DATABASE_DSN, SECRET_KEY_FOR_JWT, AUDIT_FILE, AUDIT_URL, ENABLE_HTTPS).
 // Переменные окружения имеют приоритет над флагами.
 package config
 
@@ -30,6 +30,8 @@ type Config struct {
 	AuditFile string `env:"AUDIT_FILE"`
 	// AuditURL — URL удалённого приёмника событий; пустая строка отключает HTTPObserver.
 	AuditURL string `env:"AUDIT_URL"`
+	// EnableHTTPS — включает TLS-сервер вместо обычного HTTP.
+	EnableHTTPS bool `env:"ENABLE_HTTPS"`
 }
 
 // AppConfig — глобальный экземпляр конфигурации. Инициализируется вызовом Init.
@@ -86,5 +88,6 @@ func Init(serverAddress, baseURL, pathToStoreURL, databaseDsn, secretKeyForJWT, 
 		WorkerNum:       cfg.WorkerNum,
 		AuditFile:       cfg.AuditFile,
 		AuditURL:        cfg.AuditURL,
+		EnableHTTPS:     cfg.EnableHTTPS,
 	}
 }

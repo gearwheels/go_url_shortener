@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -77,12 +78,16 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	b := flag.String("b", "http://localhost:8080/", "destination address")
 	f := flag.String("f", "./storage/store_url.txt", "destination file")
 	d := flag.String("d", "postgres://shortener:shortener@localhost:5432/shortener", "destination database")
-	s := flag.String("s", "", "destination secret")
+	k := flag.String("k", "", "destination secret")
+	s := flag.Bool("s", false, "enable HTTPS (TLS)")
 	auditFile := flag.String("audit-file", "", "path to audit log file")
 	auditURL := flag.String("audit-url", "", "URL of remote audit receiver")
 	// разбор командной строки
 	flag.Parse()
-	config.Init(*a, *b, *f, *d, *s, *auditFile, *auditURL)
+	config.Init(*a, *b, *f, *d, *k, *auditFile, *auditURL)
+	if *s {
+		config.AppConfig.EnableHTTPS = true
+	}
 
 	auditor := audit.NewAuditor()
 	if config.AppConfig.AuditFile != "" {
@@ -141,8 +146,24 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	fmt.Println("  GET /{id} - Redirect to original URL")
 	fmt.Println("    Response: 307 with Location header")
 
-	if err := http.ListenAndServe(*a, router); err != nil {
-		slog.Error("Server error:", slog.String("err", err.Error()))
+	if config.AppConfig.EnableHTTPS {
+		tlsCfg, err := buildTLSConfig()
+		if err != nil {
+			slog.Error("Failed to build TLS config", slog.String("err", err.Error()))
+			return
+		}
+		ln, err := tls.Listen("tcp", *a, tlsCfg)
+		if err != nil {
+			slog.Error("Failed to start HTTPS listener", slog.String("err", err.Error()))
+			return
+		}
+		if err := http.Serve(ln, router); err != nil {
+			slog.Error("Server error", slog.String("err", err.Error()))
+		}
+	} else {
+		if err := http.ListenAndServe(*a, router); err != nil {
+			slog.Error("Server error", slog.String("err", err.Error()))
+		}
 	}
 }
 
