@@ -27,6 +27,28 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// Устанавливаются флагами линковщика при сборке:
+//
+//	go build -ldflags "-X main.buildVersion=v1.0.0 -X main.buildDate=2024-01-01 -X main.buildCommit=abc1234"
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
+func na(s string) string {
+	if s == "" {
+		return "N/A"
+	}
+	return s
+}
+
+func init() {
+	fmt.Printf("Build version: %s\n", na(buildVersion))
+	fmt.Printf("Build date: %s\n", na(buildDate))
+	fmt.Printf("Build commit: %s\n", na(buildCommit))
+}
+
 func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.go" -a localhost:8080 -b http://localhost:8080/
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)                 // Добавляет ID каждому запросу
@@ -109,7 +131,6 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	router.Get("/api/user/urls", handler.UserURL)
 	router.Delete("/api/user/urls", handler.DeleteBatchHandler(tasksDelCh))
 
-	// port := ":8080"
 	fmt.Printf("URL Shortener server starting on %s\n", *a)
 	fmt.Println("\nEndpoints:")
 	fmt.Println("  POST / - Shorten URL")
@@ -122,7 +143,6 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 
 	if err := http.ListenAndServe(*a, router); err != nil {
 		slog.Error("Server error:", slog.String("err", err.Error()))
-
 	}
 }
 
