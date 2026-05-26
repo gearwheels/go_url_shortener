@@ -462,8 +462,8 @@ func TestJSONShortenHandler_ValidURL(t *testing.T) {
 			}
 
 			var resp schemasshortener.ResponseSchema
-			if unmarshalErr := json.Unmarshal(rr.Body.Bytes(), &resp); unmarshalErr != nil {
-				t.Fatalf("Failed to unmarshal response: %v", unmarshalErr)
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
 			}
 
 			if resp.Result == "" {

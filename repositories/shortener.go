@@ -187,7 +187,7 @@ func (r *URLShortener) List(ctx context.Context) ([]URL, error) {
 	return out, nil
 }
 
-// UpdateIsDelete помечает записи пользователя как удалённые по списку short_url.
+// Update помечает записи пользователя как удалённые по списку short_url.
 func (r *URLShortener) UpdateIsDelete(ctx context.Context, userID string, shortIDs []string) error {
 	_ = ctx
 	if len(shortIDs) == 0 {

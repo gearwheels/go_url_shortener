@@ -189,7 +189,7 @@ func (r *URLPostgresRepository) List(ctx context.Context) ([]URL, error) {
 	return list, err
 }
 
-// UpdateIsDelete устанавливает флаг is_deleted для набора short_url конкретного пользователя.
+// Update устанавливает флаг is_deleted для набора short_url конкретного пользователя.
 func (r *URLPostgresRepository) UpdateIsDelete(ctx context.Context, userID string, shortIDs []string) error {
 	if len(shortIDs) == 0 {
 		return nil

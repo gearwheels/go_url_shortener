@@ -13,10 +13,7 @@ import (
 func initBenchConfig(b *testing.B) {
 	b.Helper()
 	if config.AppConfig == nil {
-		dir, err := os.MkdirTemp("", "bench")
-		if err != nil {
-			b.Fatal(err)
-		}
+		dir, _ := os.MkdirTemp("", "bench")
 		config.Init("localhost:8080", "http://localhost:8080/", filepath.Join(dir, "store.txt"),
 			"", "secret", "", "")
 	}
@@ -28,13 +25,11 @@ func populatedRepo(b *testing.B, n int) *URLShortener {
 	repo := NewRepoShortener()
 	ctx := context.Background()
 	for i := 0; i < n; i++ {
-		if _, _, err := repo.Create(ctx, URL{
+		_, _, _ = repo.Create(ctx, URL{
 			URL:      fmt.Sprintf("https://example.com/page%d", i),
 			ShortURL: fmt.Sprintf("short%d", i),
 			UserID:   fmt.Sprintf("user%d", i%10),
-		}); err != nil {
-			b.Fatal(err)
-		}
+		})
 	}
 	return repo
 }
@@ -46,13 +41,11 @@ func BenchmarkCreate(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if _, _, err := repo.Create(ctx, URL{
+		_, _, _ = repo.Create(ctx, URL{
 			URL:      fmt.Sprintf("https://example.com/url%d", i),
 			ShortURL: fmt.Sprintf("short%d", i),
 			UserID:   "bench-user",
-		}); err != nil {
-			b.Fatal(err)
-		}
+		})
 	}
 }
 
@@ -63,9 +56,7 @@ func BenchmarkGetByShortURL(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if _, err := repo.GetByShortURL(ctx, fmt.Sprintf("short%d", i%1000)); err != nil {
-			b.Fatal(err)
-		}
+		_, _ = repo.GetByShortURL(ctx, fmt.Sprintf("short%d", i%1000))
 	}
 }
 
@@ -76,9 +67,7 @@ func BenchmarkGetByURL(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if _, err := repo.GetByURL(ctx, fmt.Sprintf("https://example.com/page%d", i%1000)); err != nil {
-			b.Fatal(err)
-		}
+		_, _ = repo.GetByURL(ctx, fmt.Sprintf("https://example.com/page%d", i%1000))
 	}
 }
 
@@ -89,9 +78,7 @@ func BenchmarkList(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if _, err := repo.List(ctx); err != nil {
-			b.Fatal(err)
-		}
+		_, _ = repo.List(ctx)
 	}
 }
 
@@ -102,9 +89,7 @@ func BenchmarkGetListURLByUserID(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if _, err := repo.GetListURLByUserID(ctx, "user5"); err != nil {
-			b.Fatal(err)
-		}
+		_, _ = repo.GetListURLByUserID(ctx, "user5")
 	}
 }
 

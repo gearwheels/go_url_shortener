@@ -20,12 +20,12 @@ import (
 )
 
 // Event описывает единицу аудита: действие пользователя над URL.
-// Поле TS заполняется автоматически при вызове Auditor.Notify.
+// Поле Ts заполняется автоматически при вызове Auditor.Notify.
 type Event struct {
+	Ts     int64  `json:"ts"`
 	Action string `json:"action"`
 	UserID string `json:"user_id,omitempty"`
 	URL    string `json:"url"`
-	TS     int64  `json:"ts"`
 }
 
 // Observer — интерфейс наблюдателя. Реализуйте его для подключения
@@ -56,7 +56,7 @@ func (a *Auditor) Notify(event Event) {
 	if a == nil {
 		return
 	}
-	event.TS = time.Now().Unix()
+	event.Ts = time.Now().Unix()
 	for _, obs := range a.observers {
 		obs.Notify(event)
 	}
