@@ -43,6 +43,27 @@ git fetch template && git checkout template/v2 .github
 - **Hexagonal Architecture**
 - **Layered Architecture**
 
+## Сборка с информацией о версии
+
+Переменные `buildVersion`, `buildDate` и `buildCommit` встраиваются в бинарник через флаги линковщика:
+
+```sh
+go build \
+  -ldflags "-X main.buildVersion=v1.0.0 -X main.buildDate=$(date -u +%Y-%m-%d) -X main.buildCommit=$(git rev-parse --short HEAD)" \
+  -o shortener \
+  ./cmd/shortener/
+```
+
+При старте приложение выводит:
+
+```text
+Build version: v1.0.0
+Build date: 2024-01-01
+Build commit: abc1234
+```
+
+Если флаги не переданы, используются значения по умолчанию `N/A`.
+
 ## Профилирование памяти (pprof)
 
 Базовый профиль снят командой:

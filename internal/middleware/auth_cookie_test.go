@@ -12,7 +12,10 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	dir, _ := os.MkdirTemp("", "mw_test")
+	dir, err := os.MkdirTemp("", "mw_test")
+	if err != nil {
+		panic(err)
+	}
 	config.Init("localhost:8080", "http://localhost:8080/",
 		filepath.Join(dir, "store.txt"), "", "test-secret-key", "", "")
 	os.Exit(m.Run())
