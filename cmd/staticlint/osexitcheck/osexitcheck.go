@@ -112,7 +112,10 @@ func run(pass *analysis.Pass) (interface{}, error) {
 // isGeneratedTestMain возвращает true, если анализируемый пакет — это
 // автогенерированный тестовый main (например, _testmain.go из кэша сборки).
 func isGeneratedTestMain(pass *analysis.Pass) bool {
-	cacheDir, _ := os.UserCacheDir()
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		cacheDir = ""
+	}
 	goBuildCache := os.Getenv("GOCACHE")
 
 	for _, f := range pass.Files {

@@ -198,7 +198,9 @@ func TestGetAllShortenerURL(t *testing.T) {
 			t.Fatalf("ShortenURL: %v", err)
 		}
 	}
-	_, _, _ = svc.ShortenURL(ctx, "https://other.com", "user-b")
+	if _, _, err := svc.ShortenURL(ctx, "https://other.com", "user-b"); err != nil {
+		t.Fatalf("ShortenURL user-b: %v", err)
+	}
 
 	urls, err := svc.GetAllShortenerURL(ctx, "user-a")
 	if err != nil {
@@ -254,8 +256,14 @@ func TestMarkOnDeleteBatch(t *testing.T) {
 	svc := newTestService()
 	ctx := context.Background()
 
-	id1, _, _ := svc.ShortenURL(ctx, "https://example.com/del1", "u1")
-	id2, _, _ := svc.ShortenURL(ctx, "https://example.com/del2", "u1")
+	id1, _, err := svc.ShortenURL(ctx, "https://example.com/del1", "u1")
+	if err != nil {
+		t.Fatalf("ShortenURL del1: %v", err)
+	}
+	id2, _, err := svc.ShortenURL(ctx, "https://example.com/del2", "u1")
+	if err != nil {
+		t.Fatalf("ShortenURL del2: %v", err)
+	}
 
 	if err := svc.MarkOnDeleteBatch(ctx, "u1", []string{id1, id2}); err != nil {
 		t.Fatalf("MarkOnDeleteBatch: %v", err)

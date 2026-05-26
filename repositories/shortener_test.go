@@ -144,7 +144,10 @@ func TestInMemoryRepository_GetByID(t *testing.T) {
 		t.Fatalf("Create: %v, inserted=%v", err, inserted)
 	}
 
-	list, _ := repo.List(ctx)
+	list, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
 	if len(list) != 1 {
 		t.Fatalf("expected 1 item")
 	}
@@ -180,7 +183,10 @@ func TestInMemoryRepository_DeleteByShortURL(t *testing.T) {
 		t.Fatalf("DeleteByShortURL: %v", err)
 	}
 
-	list, _ := repo.List(ctx)
+	list, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List after delete: %v", err)
+	}
 	if len(list) != 0 {
 		t.Errorf("expected empty after delete, got %d", len(list))
 	}
@@ -195,24 +201,39 @@ func TestInMemoryRepository_UpdateIsDelete(t *testing.T) {
 	repo := NewRepoShortener()
 	ctx := context.Background()
 
-	_, _, _ = repo.Create(ctx, URL{URL: "https://a.com", ShortURL: "s1", UserID: "u1"})
-	_, _, _ = repo.Create(ctx, URL{URL: "https://b.com", ShortURL: "s2", UserID: "u1"})
-	_, _, _ = repo.Create(ctx, URL{URL: "https://c.com", ShortURL: "s3", UserID: "u2"})
+	if _, _, err := repo.Create(ctx, URL{URL: "https://a.com", ShortURL: "s1", UserID: "u1"}); err != nil {
+		t.Fatalf("Create s1: %v", err)
+	}
+	if _, _, err := repo.Create(ctx, URL{URL: "https://b.com", ShortURL: "s2", UserID: "u1"}); err != nil {
+		t.Fatalf("Create s2: %v", err)
+	}
+	if _, _, err := repo.Create(ctx, URL{URL: "https://c.com", ShortURL: "s3", UserID: "u2"}); err != nil {
+		t.Fatalf("Create s3: %v", err)
+	}
 
 	err := repo.UpdateIsDelete(ctx, "u1", []string{"s1"})
 	if err != nil {
 		t.Fatalf("UpdateIsDelete: %v", err)
 	}
 
-	u, _ := repo.GetByShortURL(ctx, "s1")
+	u, err := repo.GetByShortURL(ctx, "s1")
+	if err != nil {
+		t.Fatalf("GetByShortURL s1: %v", err)
+	}
 	if !u.DeletedFlag {
 		t.Error("s1 should be marked deleted")
 	}
-	u2, _ := repo.GetByShortURL(ctx, "s2")
+	u2, err := repo.GetByShortURL(ctx, "s2")
+	if err != nil {
+		t.Fatalf("GetByShortURL s2: %v", err)
+	}
 	if u2.DeletedFlag {
 		t.Error("s2 should NOT be marked deleted")
 	}
-	u3, _ := repo.GetByShortURL(ctx, "s3")
+	u3, err := repo.GetByShortURL(ctx, "s3")
+	if err != nil {
+		t.Fatalf("GetByShortURL s3: %v", err)
+	}
 	if u3.DeletedFlag {
 		t.Error("s3 (different user) should NOT be marked deleted")
 	}
@@ -227,9 +248,15 @@ func TestInMemoryRepository_GetListURLByUserID(t *testing.T) {
 	repo := NewRepoShortener()
 	ctx := context.Background()
 
-	_, _, _ = repo.Create(ctx, URL{URL: "https://a.com", ShortURL: "a1", UserID: "alice"})
-	_, _, _ = repo.Create(ctx, URL{URL: "https://b.com", ShortURL: "b1", UserID: "alice"})
-	_, _, _ = repo.Create(ctx, URL{URL: "https://c.com", ShortURL: "c1", UserID: "bob"})
+	if _, _, err := repo.Create(ctx, URL{URL: "https://a.com", ShortURL: "a1", UserID: "alice"}); err != nil {
+		t.Fatalf("Create a1: %v", err)
+	}
+	if _, _, err := repo.Create(ctx, URL{URL: "https://b.com", ShortURL: "b1", UserID: "alice"}); err != nil {
+		t.Fatalf("Create b1: %v", err)
+	}
+	if _, _, err := repo.Create(ctx, URL{URL: "https://c.com", ShortURL: "c1", UserID: "bob"}); err != nil {
+		t.Fatalf("Create c1: %v", err)
+	}
 
 	aliceList, err := repo.GetListURLByUserID(ctx, "alice")
 	if err != nil {
@@ -260,7 +287,9 @@ func TestInMemoryRepository_HelperMethods(t *testing.T) {
 	repo := NewRepoShortener()
 	ctx := context.Background()
 
-	_, _, _ = repo.Create(ctx, URL{URL: "https://x.com", ShortURL: "x1"})
+	if _, _, err := repo.Create(ctx, URL{URL: "https://x.com", ShortURL: "x1"}); err != nil {
+		t.Fatalf("Create x1: %v", err)
+	}
 
 	repo.RLockMu()
 	n := repo.GetLenStore()
@@ -284,7 +313,9 @@ func TestInMemoryRepository_ExtractFromFile(t *testing.T) {
 	repo := NewRepoShortener()
 	ctx := context.Background()
 
-	_, _, _ = repo.Create(ctx, URL{URL: "https://persist.com", ShortURL: "p1"})
+	if _, _, err := repo.Create(ctx, URL{URL: "https://persist.com", ShortURL: "p1"}); err != nil {
+		t.Fatalf("Create p1: %v", err)
+	}
 	if err := repo.UpdateFile(`"p1":"https://persist.com"`); err != nil {
 		t.Fatalf("UpdateFile: %v", err)
 	}

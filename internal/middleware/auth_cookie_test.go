@@ -86,7 +86,10 @@ func TestAuthMiddleware_ValidCookie(t *testing.T) {
 
 	var capturedUID string
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		uid, _ := GetUserID(r.Context())
+		uid, err := GetUserID(r.Context())
+		if err != nil {
+			t.Errorf("GetUserID: %v", err)
+		}
 		capturedUID = uid
 		w.WriteHeader(http.StatusOK)
 	})
@@ -106,7 +109,11 @@ func TestAuthMiddleware_InvalidCookieSignature(t *testing.T) {
 
 	var capturedUID string
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedUID, _ = GetUserID(r.Context())
+		var getUserErr error
+		capturedUID, getUserErr = GetUserID(r.Context())
+		if getUserErr != nil {
+			t.Logf("GetUserID returned error (expected for tampered cookie): %v", getUserErr)
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 
