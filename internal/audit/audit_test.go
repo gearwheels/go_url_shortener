@@ -35,6 +35,9 @@ func readLines(t *testing.T, path string) []string {
 			lines = append(lines, line)
 		}
 	}
+	if err := sc.Err(); err != nil {
+		t.Fatalf("scanner error: %v", err)
+	}
 	return lines
 }
 
@@ -44,7 +47,7 @@ func TestFileObserver_CreatesFile(t *testing.T) {
 	path := tempFile(t)
 	obs := NewFileObserver(path)
 	defer obs.Close()
-	obs.Notify(Event{Ts: 1, Action: "shorten", URL: "https://example.com"})
+	obs.Notify(Event{TS: 1, Action: "shorten", URL: "https://example.com"})
 
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected file to be created: %v", err)
@@ -55,7 +58,7 @@ func TestFileObserver_WritesValidJSON(t *testing.T) {
 	path := tempFile(t)
 	obs := NewFileObserver(path)
 	defer obs.Close()
-	obs.Notify(Event{Ts: 111, Action: "shorten", UserID: "u1", URL: "https://a.com"})
+	obs.Notify(Event{TS: 111, Action: "shorten", UserID: "u1", URL: "https://a.com"})
 
 	lines := readLines(t, path)
 	if len(lines) != 1 {
@@ -112,7 +115,7 @@ func TestFileObserver_OmitsEmptyUserID(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatalf("expected 1 line")
 	}
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal([]byte(lines[0]), &raw); err != nil {
 		t.Fatalf("json: %v", err)
 	}
@@ -149,7 +152,7 @@ func TestHTTPObserver_SendsPOST(t *testing.T) {
 	defer srv.Close()
 
 	obs := NewHTTPObserver(srv.URL)
-	obs.Notify(Event{Ts: 999, Action: "shorten", UserID: "u2", URL: "https://example.org"})
+	obs.Notify(Event{TS: 999, Action: "shorten", UserID: "u2", URL: "https://example.org"})
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -242,9 +245,9 @@ func TestAuditor_SetsTimestamp(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event")
 	}
-	ts := events[0].Ts
+	ts := events[0].TS
 	if ts < before || ts > after {
-		t.Errorf("Ts %d out of range [%d, %d]", ts, before, after)
+		t.Errorf("TS %d out of range [%d, %d]", ts, before, after)
 	}
 }
 
@@ -301,8 +304,8 @@ func TestAuditor_WithFileObserver(t *testing.T) {
 	if e.Action != "shorten" || e.UserID != "u3" || e.URL != "https://integration.com" {
 		t.Errorf("unexpected event: %+v", e)
 	}
-	if e.Ts == 0 {
-		t.Error("Ts must be set by Auditor.Notify")
+	if e.TS == 0 {
+		t.Error("TS must be set by Auditor.Notify")
 	}
 }
 
