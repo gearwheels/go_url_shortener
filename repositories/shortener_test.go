@@ -15,7 +15,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	path := filepath.Join(dir, "store_url.txt")
-	config.Init("localhost:8888", "http://localhost:8000/", path, "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "")
+	config.Init("localhost:8888", "http://localhost:8000/", path, "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "", false, nil)
 	os.Exit(m.Run())
 }
 

@@ -23,7 +23,7 @@ func initBenchHandler(b *testing.B) {
 			b.Fatalf("MkdirTemp: %v", err)
 		}
 		config.Init("localhost:8080", "http://localhost:8080/",
-			filepath.Join(dir, "store.txt"), "", "bench-secret", "", "")
+			filepath.Join(dir, "store.txt"), "", "bench-secret", "", "", false, nil)
 	}
 	if service.Shortener == nil {
 		service.Shortener = service.NewShortenerService(repo.NewRepoShortener())

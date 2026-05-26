@@ -20,7 +20,7 @@ func initExampleEnv() {
 	if config.AppConfig == nil {
 		dir, _ := os.MkdirTemp("", "example")
 		config.Init("localhost:8080", "http://localhost:8080/",
-			filepath.Join(dir, "store.txt"), "", "example-secret", "", "")
+			filepath.Join(dir, "store.txt"), "", "example-secret", "", "", false, nil)
 	}
 	if service.Shortener == nil {
 		service.Shortener = service.NewShortenerService(repo.NewRepoShortener())

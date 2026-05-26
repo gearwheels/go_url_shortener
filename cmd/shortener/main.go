@@ -73,21 +73,29 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 
 	slog.SetDefault(logger)
 
-	a := flag.String("a", "localhost:8080", "start up address for the server")
+	a := flag.String("a", "", "start up address for the server")
 	// пробросить в обработчики чтоб отдавать ответ с адресом b
-	b := flag.String("b", "http://localhost:8080/", "destination address")
-	f := flag.String("f", "./storage/store_url.txt", "destination file")
-	d := flag.String("d", "postgres://shortener:shortener@localhost:5432/shortener", "destination database")
+	b := flag.String("b", "", "destination address")
+	f := flag.String("f", "", "destination file")
+	d := flag.String("d", "", "destination database")
 	k := flag.String("k", "", "destination secret")
 	s := flag.Bool("s", false, "enable HTTPS (TLS)")
 	auditFile := flag.String("audit-file", "", "path to audit log file")
 	auditURL := flag.String("audit-url", "", "URL of remote audit receiver")
+	var configPath string
+	flag.StringVar(&configPath, "c", "", "path to JSON config file")
+	flag.StringVar(&configPath, "config", "", "path to JSON config file")
 	// разбор командной строки
 	flag.Parse()
-	config.Init(*a, *b, *f, *d, *k, *auditFile, *auditURL)
-	if *s {
-		config.AppConfig.EnableHTTPS = true
+	// CONFIG env var overrides -c/-config flag
+	if envConfig := os.Getenv("CONFIG"); envConfig != "" {
+		configPath = envConfig
 	}
+	fileConfig, err := config.LoadFileConfig(configPath)
+	if err != nil {
+		slog.Error("Failed to load config file", slog.String("path", configPath), slog.String("err", err.Error()))
+	}
+	config.Init(*a, *b, *f, *d, *k, *auditFile, *auditURL, *s, fileConfig)
 
 	auditor := audit.NewAuditor()
 	if config.AppConfig.AuditFile != "" {

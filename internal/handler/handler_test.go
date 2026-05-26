@@ -33,7 +33,7 @@ func TestShortenHandler_ContentType(t *testing.T) {
 
 	if config.AppConfig == nil {
 		fmt.Println("AppConfig don't init")
-		config.Init("localhost:8888", "http://localhost:8000/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "")
+		config.Init("localhost:8888", "http://localhost:8000/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "", false, nil)
 	} else {
 		fmt.Println("AppConfig has been init-ed")
 	}
@@ -517,7 +517,7 @@ func TestJSONShortenHandler_ResponseFormat(t *testing.T) {
 // TestShortenBatchHandler тестирует батчевое сокращение URL
 func TestShortenBatchHandler(t *testing.T) {
 	if config.AppConfig == nil {
-		config.Init("localhost:8080", "http://localhost:8080/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "")
+		config.Init("localhost:8080", "http://localhost:8080/", "./storage/store_url.txt", "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "", false, nil)
 	}
 	service.Shortener = service.NewShortenerService(repo.NewRepoShortener())
 

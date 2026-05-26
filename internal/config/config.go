@@ -1,12 +1,15 @@
 // Package config хранит конфигурацию приложения.
-// Значения могут быть заданы флагами командной строки (через main.go)
-// или переменными окружения (SERVERADDRESS, BASEURL, FILE_STORAGE_PATH,
-// DATABASE_DSN, SECRET_KEY_FOR_JWT, AUDIT_FILE, AUDIT_URL, ENABLE_HTTPS).
-// Переменные окружения имеют приоритет над флагами.
+// Значения могут быть заданы флагами командной строки (через main.go),
+// переменными окружения (SERVERADDRESS, BASEURL, FILE_STORAGE_PATH,
+// DATABASE_DSN, SECRET_KEY_FOR_JWT, AUDIT_FILE, AUDIT_URL, ENABLE_HTTPS)
+// или файлом конфигурации JSON (путь задаётся флагом -c/-config или CONFIG).
+// Приоритет (убывает): переменные окружения → флаги → файл → умолчания.
 package config
 
 import (
+	"encoding/json"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/caarlos0/env/v6"
@@ -34,60 +37,143 @@ type Config struct {
 	EnableHTTPS bool `env:"ENABLE_HTTPS"`
 }
 
+// FileConfig содержит настройки, загружаемые из JSON-файла конфигурации.
+// Все поля — указатели: nil означает «не задано в файле».
+type FileConfig struct {
+	ServerAddress   *string `json:"server_address"`
+	BaseURL         *string `json:"base_url"`
+	PathStoreURL    *string `json:"file_storage_path"`
+	DatabaseDsn     *string `json:"database_dsn"`
+	SecretKeyForJWT *string `json:"secret_key"`
+	EnableHTTPS     *bool   `json:"enable_https"`
+	AuditFile       *string `json:"audit_file"`
+	AuditURL        *string `json:"audit_url"`
+}
+
+// LoadFileConfig читает и разбирает JSON-файл конфигурации.
+// Возвращает nil без ошибки, если path пустой.
+func LoadFileConfig(path string) (*FileConfig, error) {
+	if path == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var fc FileConfig
+	if err := json.Unmarshal(data, &fc); err != nil {
+		return nil, err
+	}
+	return &fc, nil
+}
+
 // AppConfig — глобальный экземпляр конфигурации. Инициализируется вызовом Init.
 var AppConfig *Config
 
-// Init инициализирует AppConfig из переменных окружения и переданных аргументов.
-// Переменные окружения имеют приоритет; аргументы используются как значения по умолчанию.
-func Init(serverAddress, baseURL, pathToStoreURL, databaseDsn, secretKeyForJWT, auditFile, auditURL string) {
-
+// Init инициализирует AppConfig по правилу приоритета:
+// переменные окружения → флаги → файл конфигурации → встроенные умолчания.
+// Параметры соответствуют флагам: -a, -b, -f, -d, -k, -audit-file, -audit-url, -s.
+// fc — результат LoadFileConfig; может быть nil, если файл не задан.
+func Init(serverAddress, baseURL, pathToStoreURL, databaseDsn, secretKeyForJWT, auditFile, auditURL string, enableHTTPS bool, fc *FileConfig) {
 	cfg := &Config{}
 	if err := env.Parse(cfg); err != nil {
 		log.Fatal(err)
 	}
-	if cfg.ServerAddress == "" {
-		if strings.HasPrefix(serverAddress, "http://") {
-			serverAddress = strings.TrimPrefix(serverAddress, "http://")
-		} else if strings.HasPrefix(serverAddress, "https://") {
-			serverAddress = strings.TrimPrefix(serverAddress, "https://")
+
+	// strVal выбирает первое непустое значение из цепочки: env → flag → file → default.
+	strVal := func(envVal, flagVal string, fileVal *string, def string) string {
+		if envVal != "" {
+			return envVal
 		}
-		cfg.ServerAddress = serverAddress
-	}
-	if cfg.BaseURL == "" {
-		if !strings.HasSuffix(baseURL, "/") {
-			baseURL += "/"
+		if flagVal != "" {
+			return flagVal
 		}
-		cfg.BaseURL = baseURL
+		if fileVal != nil && *fileVal != "" {
+			return *fileVal
+		}
+		return def
 	}
 
-	if cfg.PathStoreURL == "" {
-		cfg.PathStoreURL = pathToStoreURL
+	addr := strVal(cfg.ServerAddress, serverAddress, fileServerAddress(fc), "localhost:8080")
+	addr = strings.TrimPrefix(addr, "http://")
+	addr = strings.TrimPrefix(addr, "https://")
+	cfg.ServerAddress = addr
+
+	baseURLVal := strVal(cfg.BaseURL, baseURL, fileBaseURL(fc), "http://localhost:8080/")
+	if !strings.HasSuffix(baseURLVal, "/") {
+		baseURLVal += "/"
 	}
-	if cfg.DatabaseDsn == "" {
-		cfg.DatabaseDsn = databaseDsn
-	}
-	if cfg.SecretKeyForJWT == "" {
-		cfg.SecretKeyForJWT = secretKeyForJWT
-	}
+	cfg.BaseURL = baseURLVal
+
+	cfg.PathStoreURL = strVal(cfg.PathStoreURL, pathToStoreURL, filePathStoreURL(fc), "./storage/store_url.txt")
+	cfg.DatabaseDsn = strVal(cfg.DatabaseDsn, databaseDsn, fileDatabaseDsn(fc), "")
+	cfg.SecretKeyForJWT = strVal(cfg.SecretKeyForJWT, secretKeyForJWT, fileSecretKey(fc), "")
+	cfg.AuditFile = strVal(cfg.AuditFile, auditFile, fileAuditFile(fc), "")
+	cfg.AuditURL = strVal(cfg.AuditURL, auditURL, fileAuditURL(fc), "")
+
 	if cfg.WorkerNum == 0 {
 		cfg.WorkerNum = 5
 	}
-	if cfg.AuditFile == "" {
-		cfg.AuditFile = auditFile
-	}
-	if cfg.AuditURL == "" {
-		cfg.AuditURL = auditURL
+
+	// EnableHTTPS: env (already in cfg) → flag → file → false
+	if !cfg.EnableHTTPS {
+		if enableHTTPS {
+			cfg.EnableHTTPS = true
+		} else if fc != nil && fc.EnableHTTPS != nil {
+			cfg.EnableHTTPS = *fc.EnableHTTPS
+		}
 	}
 
-	AppConfig = &Config{
-		ServerAddress:   cfg.ServerAddress,
-		BaseURL:         cfg.BaseURL,
-		PathStoreURL:    cfg.PathStoreURL,
-		DatabaseDsn:     cfg.DatabaseDsn,
-		SecretKeyForJWT: cfg.SecretKeyForJWT,
-		WorkerNum:       cfg.WorkerNum,
-		AuditFile:       cfg.AuditFile,
-		AuditURL:        cfg.AuditURL,
-		EnableHTTPS:     cfg.EnableHTTPS,
+	AppConfig = cfg
+}
+
+// helpers to safely dereference optional FileConfig string fields.
+
+func fileServerAddress(fc *FileConfig) *string {
+	if fc == nil {
+		return nil
 	}
+	return fc.ServerAddress
+}
+
+func fileBaseURL(fc *FileConfig) *string {
+	if fc == nil {
+		return nil
+	}
+	return fc.BaseURL
+}
+
+func filePathStoreURL(fc *FileConfig) *string {
+	if fc == nil {
+		return nil
+	}
+	return fc.PathStoreURL
+}
+
+func fileDatabaseDsn(fc *FileConfig) *string {
+	if fc == nil {
+		return nil
+	}
+	return fc.DatabaseDsn
+}
+
+func fileSecretKey(fc *FileConfig) *string {
+	if fc == nil {
+		return nil
+	}
+	return fc.SecretKeyForJWT
+}
+
+func fileAuditFile(fc *FileConfig) *string {
+	if fc == nil {
+		return nil
+	}
+	return fc.AuditFile
+}
+
+func fileAuditURL(fc *FileConfig) *string {
+	if fc == nil {
+		return nil
+	}
+	return fc.AuditURL
 }

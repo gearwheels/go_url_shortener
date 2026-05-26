@@ -14,7 +14,7 @@ import (
 func TestMain(m *testing.M) {
 	dir, _ := os.MkdirTemp("", "mw_test")
 	config.Init("localhost:8080", "http://localhost:8080/",
-		filepath.Join(dir, "store.txt"), "", "test-secret-key", "", "")
+		filepath.Join(dir, "store.txt"), "", "test-secret-key", "", "", false, nil)
 	os.Exit(m.Run())
 }
 

@@ -15,7 +15,7 @@ func initBenchConfig(b *testing.B) {
 	if config.AppConfig == nil {
 		dir, _ := os.MkdirTemp("", "bench")
 		config.Init("localhost:8080", "http://localhost:8080/", filepath.Join(dir, "store.txt"),
-			"", "secret", "", "")
+			"", "secret", "", "", false, nil)
 	}
 }
 
