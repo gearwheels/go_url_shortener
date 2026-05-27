@@ -33,8 +33,7 @@ func TestRequestDataZip_DecompressRequest(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			t.Errorf("ReadAll: %v", err)
-			return
+			t.Fatalf("ReadAll: %v", err)
 		}
 		receivedBody = string(body)
 		w.Header().Set("Content-Type", "application/json")
@@ -149,8 +148,7 @@ func TestRequestDataZip_PlainBodyPassedThrough(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, err := io.ReadAll(r.Body)
 		if err != nil {
-			t.Errorf("ReadAll: %v", err)
-			return
+			t.Fatalf("ReadAll: %v", err)
 		}
 		if string(b) != body {
 			http.Error(w, "body mismatch", http.StatusBadRequest)

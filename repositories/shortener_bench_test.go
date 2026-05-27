@@ -43,9 +43,9 @@ func BenchmarkCreate(b *testing.B) {
 	initBenchConfig(b)
 	repo := NewRepoShortener()
 	ctx := context.Background()
-	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	var i int
+	for b.Loop() {
 		if _, _, err := repo.Create(ctx, URL{
 			URL:      fmt.Sprintf("https://example.com/url%d", i),
 			ShortURL: fmt.Sprintf("short%d", i),
@@ -53,6 +53,7 @@ func BenchmarkCreate(b *testing.B) {
 		}); err != nil {
 			b.Fatal(err)
 		}
+		i++
 	}
 }
 
@@ -60,12 +61,13 @@ func BenchmarkGetByShortURL(b *testing.B) {
 	initBenchConfig(b)
 	repo := populatedRepo(b, 1000)
 	ctx := context.Background()
-	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	var i int
+	for b.Loop() {
 		if _, err := repo.GetByShortURL(ctx, fmt.Sprintf("short%d", i%1000)); err != nil {
 			b.Fatal(err)
 		}
+		i++
 	}
 }
 
@@ -73,12 +75,13 @@ func BenchmarkGetByURL(b *testing.B) {
 	initBenchConfig(b)
 	repo := populatedRepo(b, 1000)
 	ctx := context.Background()
-	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	var i int
+	for b.Loop() {
 		if _, err := repo.GetByURL(ctx, fmt.Sprintf("https://example.com/page%d", i%1000)); err != nil {
 			b.Fatal(err)
 		}
+		i++
 	}
 }
 
@@ -86,9 +89,8 @@ func BenchmarkList(b *testing.B) {
 	initBenchConfig(b)
 	repo := populatedRepo(b, 1000)
 	ctx := context.Background()
-	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if _, err := repo.List(ctx); err != nil {
 			b.Fatal(err)
 		}
@@ -99,9 +101,8 @@ func BenchmarkGetListURLByUserID(b *testing.B) {
 	initBenchConfig(b)
 	repo := populatedRepo(b, 1000)
 	ctx := context.Background()
-	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if _, err := repo.GetListURLByUserID(ctx, "user5"); err != nil {
 			b.Fatal(err)
 		}
@@ -112,10 +113,9 @@ func BenchmarkCreateBatch(b *testing.B) {
 	initBenchConfig(b)
 	ctx := context.Background()
 	batch := make([]URL, 50)
-	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
+	var i int
+	for b.Loop() {
 		r := NewRepoShortener()
 		for j := range batch {
 			batch[j] = URL{
@@ -124,8 +124,10 @@ func BenchmarkCreateBatch(b *testing.B) {
 				UserID:   "bench-user",
 			}
 		}
-		b.StartTimer()
-		_ = r.CreateBatch(ctx, batch)
+		if err := r.CreateBatch(ctx, batch); err != nil {
+			b.Fatal(err)
+		}
+		i++
 	}
 }
 
@@ -137,9 +139,10 @@ func BenchmarkUpdateIsDelete(b *testing.B) {
 	for i := range ids {
 		ids[i] = fmt.Sprintf("short%d", i)
 	}
-	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		_ = repo.UpdateIsDelete(ctx, "user0", ids)
+	for b.Loop() {
+		if err := repo.UpdateIsDelete(ctx, "user0", ids); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
