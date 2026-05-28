@@ -251,8 +251,8 @@ func (s *shortenerService) WorkerDeleteFromURLTable(tasksDelCh <-chan schemassho
 				defer wgTx.Done()
 				errCh <- repo.DeleteByShortURLInTx(context.Background(), tx, task.UserID, task.Data)
 			}()
-			if err := <-errCh; err != nil {
-				slog.Error("WorkerDeleteFromURLTable: DeleteByShortURLInTx failed", "user_id", task.UserID, "short_id", task.Data, "error", err)
+			if txErr := <-errCh; txErr != nil {
+				slog.Error("WorkerDeleteFromURLTable: DeleteByShortURLInTx failed", "user_id", task.UserID, "short_id", task.Data, "error", txErr)
 			}
 			counter++
 			if counter == 20 {
@@ -276,8 +276,8 @@ func (s *shortenerService) WorkerDeleteFromURLTable(tasksDelCh <-chan schemassho
 				defer wgTx.Done()
 				errCh <- s.repository.DeleteByShortURL(context.Background(), task.UserID, task.Data)
 			}()
-			if err := <-errCh; err != nil {
-				slog.Error("WorkerDeleteFromURLTable: DeleteByShortURLInTx failed", "user_id", task.UserID, "short_id", task.Data, "error", err)
+			if txErr := <-errCh; txErr != nil {
+				slog.Error("WorkerDeleteFromURLTable: DeleteByShortURLInTx failed", "user_id", task.UserID, "short_id", task.Data, "error", txErr)
 			}
 		}
 	}

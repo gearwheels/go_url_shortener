@@ -16,16 +16,14 @@ func newBenchService() URLShortenerInterface {
 func BenchmarkGenerateID(b *testing.B) {
 	svc := newBenchService().(*shortenerService)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = svc.GenerateID()
 	}
 }
 
 func BenchmarkGenerateUniqueID(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = GenerateUniqueID()
 	}
 }
@@ -34,9 +32,12 @@ func BenchmarkShortenURL(b *testing.B) {
 	svc := newBenchService()
 	ctx := context.Background()
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _, _ = svc.ShortenURL(ctx, fmt.Sprintf("https://example.com/page%d", i), "bench-user")
+	var i int
+	for b.Loop() {
+		if _, _, err := svc.ShortenURL(ctx, fmt.Sprintf("https://example.com/page%d", i), "bench-user"); err != nil {
+			b.Fatal(err)
+		}
+		i++
 	}
 }
 
@@ -46,13 +47,19 @@ func BenchmarkGetOriginalURL(b *testing.B) {
 	// pre-populate
 	ids := make([]string, 200)
 	for i := range ids {
-		id, _, _ := svc.ShortenURL(ctx, fmt.Sprintf("https://example.com/pre%d", i), "u")
+		id, _, err := svc.ShortenURL(ctx, fmt.Sprintf("https://example.com/pre%d", i), "u")
+		if err != nil {
+			b.Fatal(err)
+		}
 		ids[i] = id
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _, _ = svc.GetOriginalURL(ctx, ids[i%len(ids)])
+	var i int
+	for b.Loop() {
+		if _, _, err := svc.GetOriginalURL(ctx, ids[i%len(ids)]); err != nil {
+			b.Fatal(err)
+		}
+		i++
 	}
 }
 
@@ -61,17 +68,18 @@ func BenchmarkShortenURLBatch(b *testing.B) {
 	ctx := context.Background()
 	batch := make([]schemasshortener.RequestBatchURLSchema, 20)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
+	var i int
+	for b.Loop() {
 		for j := range batch {
 			batch[j] = schemasshortener.RequestBatchURLSchema{
 				CorrelationID: fmt.Sprintf("id-%d-%d", i, j),
 				OriginalURL:   fmt.Sprintf("https://example.com/%d/%d", i, j),
 			}
 		}
-		b.StartTimer()
-		_, _ = svc.ShortenURLBatch(ctx, batch, "bench-user")
+		if _, err := svc.ShortenURLBatch(ctx, batch, "bench-user"); err != nil {
+			b.Fatal(err)
+		}
+		i++
 	}
 }
 
@@ -79,11 +87,14 @@ func BenchmarkGetAllShortenerURL(b *testing.B) {
 	svc := newBenchService()
 	ctx := context.Background()
 	for i := 0; i < 200; i++ {
-		_, _, _ = svc.ShortenURL(ctx, fmt.Sprintf("https://example.com/u%d", i), "bench-user")
+		if _, _, err := svc.ShortenURL(ctx, fmt.Sprintf("https://example.com/u%d", i), "bench-user"); err != nil {
+			b.Fatal(err)
+		}
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = svc.GetAllShortenerURL(ctx, "bench-user")
+	for b.Loop() {
+		if _, err := svc.GetAllShortenerURL(ctx, "bench-user"); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
