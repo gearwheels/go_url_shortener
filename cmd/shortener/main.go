@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"database/sql"
 	"flag"
@@ -8,7 +9,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -130,7 +133,7 @@ func main() {
 	router.Get("/api/user/urls", handler.UserURL)
 	router.Delete("/api/user/urls", handler.DeleteBatchHandler(tasksDelCh))
 
-	fmt.Printf("URL Shortener server starting on %s\n", *a)
+	fmt.Printf("URL Shortener server starting on %s\n", config.AppConfig.ServerAddress)
 	fmt.Println("\nEndpoints:")
 	fmt.Println("  POST / - Shorten URL")
 	fmt.Println("    Content-Type: text/plain")
@@ -140,25 +143,49 @@ func main() {
 	fmt.Println("  GET /{id} - Redirect to original URL")
 	fmt.Println("    Response: 307 with Location header")
 
-	if config.AppConfig.EnableHTTPS {
-		tlsCfg, err := buildTLSConfig()
-		if err != nil {
-			slog.Error("Failed to build TLS config", slog.String("err", err.Error()))
-			return
-		}
-		ln, err := tls.Listen("tcp", *a, tlsCfg)
-		if err != nil {
-			slog.Error("Failed to start HTTPS listener", slog.String("err", err.Error()))
-			return
-		}
-		if err := http.Serve(ln, router); err != nil {
-			slog.Error("Server error", slog.String("err", err.Error()))
-		}
-	} else {
-		if err := http.ListenAndServe(*a, router); err != nil {
-			slog.Error("Server error", slog.String("err", err.Error()))
-		}
+	srv := &http.Server{
+		Addr:    config.AppConfig.ServerAddress,
+		Handler: router,
 	}
+
+	go func() {
+		var serveErr error
+		if config.AppConfig.EnableHTTPS {
+			tlsCfg, tlsErr := buildTLSConfig()
+			if tlsErr != nil {
+				slog.Error("Failed to build TLS config", slog.String("err", tlsErr.Error()))
+				return
+			}
+			ln, listenErr := tls.Listen("tcp", config.AppConfig.ServerAddress, tlsCfg)
+			if listenErr != nil {
+				slog.Error("Failed to start HTTPS listener", slog.String("err", listenErr.Error()))
+				return
+			}
+			serveErr = srv.Serve(ln)
+		} else {
+			serveErr = srv.ListenAndServe()
+		}
+		if serveErr != nil && serveErr != http.ErrServerClosed {
+			slog.Error("Server error", slog.String("err", serveErr.Error()))
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	<-quit
+
+	slog.Info("Shutting down server, draining in-flight requests...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("Server shutdown error", slog.String("err", err.Error()))
+	}
+
+	close(tasksDelCh)
+	wg.Wait()
+
+	slog.Info("Server stopped")
 }
 
 func runMigrations(db *sql.DB) error {
