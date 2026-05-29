@@ -18,7 +18,10 @@ import (
 // initExampleEnv настраивает минимальное окружение для примеров.
 func initExampleEnv() {
 	if config.AppConfig == nil {
-		dir, _ := os.MkdirTemp("", "example")
+		dir, err := os.MkdirTemp("", "example")
+		if err != nil {
+			panic(err)
+		}
 		config.Init("localhost:8080", "http://localhost:8080/",
 			filepath.Join(dir, "store.txt"), "", "example-secret", "", "", false, nil)
 	}

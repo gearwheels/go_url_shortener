@@ -1,12 +1,11 @@
-// Package osexitcheck реализует анализатор, запрещающий прямой вызов os.Exit
-// в функции main пакета main.
+// Package osexitcheck реализует анализатор, запрещающий прямой вызов os.Exit,
+// log.Fatal* и panic в функции main пакета main.
 //
 // # Мотивация
 //
-// Прямой вызов os.Exit в main() обходит все отложенные (defer) вызовы,
+// Прямой вызов os.Exit/log.Fatal в main() обходит все отложенные (defer) вызовы,
 // делает код нетестируемым и затрудняет корректное завершение ресурсов.
-// Вместо этого следует возвращаться из main() или вызывать os.Exit
-// из вспомогательной функции, которую можно подменить в тестах.
+// panic в main() создаёт непредсказуемый вывод вместо аккуратного завершения.
 //
 // # Пример нарушения
 //
@@ -46,10 +45,10 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-// Analyzer — анализатор, запрещающий os.Exit в функции main пакета main.
+// Analyzer — анализатор, запрещающий os.Exit, log.Fatal* и panic в функции main пакета main.
 var Analyzer = &analysis.Analyzer{
 	Name:     "osexitcheck",
-	Doc:      "запрещает прямой вызов os.Exit в функции main пакета main",
+	Doc:      "запрещает вызовы os.Exit, log.Fatal* и panic в функции main пакета main",
 	Run:      run,
 	Requires: []*analysis.Analyzer{inspect.Analyzer},
 }
@@ -60,16 +59,13 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	}
 
 	// Пропускаем автогенерированные main-файлы тестового фреймворка.
-	// Такие файлы находятся в кэше сборки Go или заканчиваются на _testmain.go.
 	if isGeneratedTestMain(pass) {
 		return nil, nil
 	}
 
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
-	nodeFilter := []ast.Node{(*ast.FuncDecl)(nil)}
-
-	insp.Preorder(nodeFilter, func(n ast.Node) {
+	insp.Preorder([]ast.Node{(*ast.FuncDecl)(nil)}, func(n ast.Node) {
 		fn, ok := n.(*ast.FuncDecl)
 		if !ok || fn.Name.Name != "main" || fn.Recv != nil || fn.Body == nil {
 			return
@@ -80,17 +76,32 @@ func run(pass *analysis.Pass) (interface{}, error) {
 			if !ok {
 				return true
 			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
+
+			switch fun := call.Fun.(type) {
+			case *ast.Ident:
+				// Проверяем встроенный panic через TypesInfo: у builtin-объектов Pkg() == nil.
+				if fun.Name == "panic" {
+					if obj := pass.TypesInfo.Uses[fun]; obj != nil && obj.Pkg() == nil {
+						pass.Reportf(call.Pos(), "вызов panic в функции main запрещён")
+					}
+				}
+
+			case *ast.SelectorExpr:
+				// Используем TypesInfo.Uses для корректной работы с алиасами импортов.
+				obj := pass.TypesInfo.Uses[fun.Sel]
+				if obj == nil || obj.Pkg() == nil {
+					return true
+				}
+				pkgPath := obj.Pkg().Path()
+				name := obj.Name()
+				switch {
+				case pkgPath == "os" && name == "Exit":
+					pass.Reportf(call.Pos(), "прямой вызов os.Exit в функции main запрещён")
+				case pkgPath == "log" && (name == "Fatal" || name == "Fatalf" || name == "Fatalln"):
+					pass.Reportf(call.Pos(), "вызов log.Fatal в функции main запрещён")
+				}
 			}
-			pkg, ok := sel.X.(*ast.Ident)
-			if !ok {
-				return true
-			}
-			if pkg.Name == "os" && sel.Sel.Name == "Exit" {
-				pass.Reportf(call.Pos(), "прямой вызов os.Exit в функции main запрещён")
-			}
+
 			return true
 		})
 	})
@@ -101,7 +112,10 @@ func run(pass *analysis.Pass) (interface{}, error) {
 // isGeneratedTestMain возвращает true, если анализируемый пакет — это
 // автогенерированный тестовый main (например, _testmain.go из кэша сборки).
 func isGeneratedTestMain(pass *analysis.Pass) bool {
-	cacheDir, _ := os.UserCacheDir()
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		cacheDir = ""
+	}
 	goBuildCache := os.Getenv("GOCACHE")
 
 	for _, f := range pass.Files {

@@ -32,35 +32,25 @@ import (
 //
 //	go build -ldflags "-X main.buildVersion=v1.0.0 -X main.buildDate=2024-01-01 -X main.buildCommit=abc1234"
 var (
-	buildVersion string
-	buildDate    string
-	buildCommit  string
+	buildVersion = "N/A"
+	buildDate    = "N/A"
+	buildCommit  = "N/A"
 )
 
-func na(s string) string {
-	if s == "" {
-		return "N/A"
-	}
-	return s
-}
+func main() {
+	fmt.Printf("Build version: %s\n", buildVersion)
+	fmt.Printf("Build date: %s\n", buildDate)
+	fmt.Printf("Build commit: %s\n", buildCommit)
 
-func init() {
-	fmt.Printf("Build version: %s\n", na(buildVersion))
-	fmt.Printf("Build date: %s\n", na(buildDate))
-	fmt.Printf("Build commit: %s\n", na(buildCommit))
-}
-
-func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.go" -a localhost:8080 -b http://localhost:8080/
 	router := chi.NewRouter()
-	router.Use(middleware.RequestID)                 // Добавляет ID каждому запросу
-	router.Use(middleware.RealIP)                    // Получает реальный IP
-	router.Use(middleware.Recoverer)                 // Обработка паник
-	router.Use(middleware.Timeout(60 * time.Second)) // Таймаут
+	router.Use(middleware.RequestID)
+	router.Use(middleware.RealIP)
+	router.Use(middleware.Recoverer)
+	router.Use(middleware.Timeout(60 * time.Second))
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			// Кастомизация формата времени
 			if a.Key == slog.TimeKey {
 				return slog.Attr{
 					Key:   "timestamp",
@@ -74,7 +64,6 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	slog.SetDefault(logger)
 
 	a := flag.String("a", "", "start up address for the server")
-	// пробросить в обработчики чтоб отдавать ответ с адресом b
 	b := flag.String("b", "", "destination address")
 	f := flag.String("f", "", "destination file")
 	d := flag.String("d", "", "destination database")
@@ -85,7 +74,6 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	var configPath string
 	flag.StringVar(&configPath, "c", "", "path to JSON config file")
 	flag.StringVar(&configPath, "config", "", "path to JSON config file")
-	// разбор командной строки
 	flag.Parse()
 	// CONFIG env var overrides -c/-config flag
 	if envConfig := os.Getenv("CONFIG"); envConfig != "" {
@@ -108,7 +96,6 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 
 	tasksDelCh := make(chan schemasshortener.Task, 20)
 
-	// Инициализация сервиса в зависимости от наличия базы данных
 	pgExist := config.AppConfig.DatabaseDsn != ""
 	var db *sqlx.DB
 	if pgExist {
@@ -132,7 +119,6 @@ func main() { // go run "d:\yandex_practice\go_url_shortener\cmd\shortener\main.
 	wg.Add(1)
 	go service.Shortener.WorkerDeleteFromURLTable(tasksDelCh, &wg)
 
-	// Наш middleware для логирования
 	router.Use(logrequest.RequestLogger(logger))
 	router.Use(logrequest.RequestDataZip())
 	router.Use(logrequest.AuthMiddleware)
