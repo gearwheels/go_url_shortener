@@ -86,7 +86,17 @@ func main() {
 	if err != nil {
 		slog.Error("Failed to load config file", slog.String("path", configPath), slog.String("err", err.Error()))
 	}
-	config.Init(*a, *b, *f, *d, *k, *auditFile, *auditURL, *s, fileConfig)
+	config.Init(config.InitOptions{
+		ServerAddress:   *a,
+		BaseURL:         *b,
+		PathStoreURL:    *f,
+		DatabaseDsn:     *d,
+		SecretKeyForJWT: *k,
+		AuditFile:       *auditFile,
+		AuditURL:        *auditURL,
+		EnableHTTPS:     *s,
+		FileConfig:      fileConfig,
+	})
 
 	auditor := audit.NewAuditor()
 	if config.AppConfig.AuditFile != "" {

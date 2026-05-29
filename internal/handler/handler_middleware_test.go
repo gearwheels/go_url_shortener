@@ -39,7 +39,13 @@ func init() {
 func newTestRouter(t *testing.T) http.Handler {
 	t.Helper()
 	if config.AppConfig == nil {
-		config.Init("localhost:8888", "http://localhost:8000/", testStoragePath, "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "", false, nil)
+		config.Init(config.InitOptions{
+			ServerAddress:   "localhost:8888",
+			BaseURL:         "http://localhost:8000/",
+			PathStoreURL:    testStoragePath,
+			DatabaseDsn:     "postgres://shortener:shortener@localhost:5432/shortener",
+			SecretKeyForJWT: "test-secret",
+		})
 	}
 	if service.Shortener == nil {
 		service.Shortener = service.GetService(false, nil)

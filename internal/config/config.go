@@ -67,18 +67,32 @@ func LoadFileConfig(path string) (*FileConfig, error) {
 	return &fc, nil
 }
 
+// InitOptions содержит флаги командной строки и файл конфигурации,
+// передаваемые в Init из main. Нулевые значения означают «не задано».
+type InitOptions struct {
+	ServerAddress   string
+	BaseURL         string
+	PathStoreURL    string
+	DatabaseDsn     string
+	SecretKeyForJWT string
+	AuditFile       string
+	AuditURL        string
+	EnableHTTPS     bool
+	FileConfig      *FileConfig
+}
+
 // AppConfig — глобальный экземпляр конфигурации. Инициализируется вызовом Init.
 var AppConfig *Config
 
 // Init инициализирует AppConfig по правилу приоритета:
-// переменные окружения → флаги → файл конфигурации → встроенные умолчания.
-// Параметры соответствуют флагам: -a, -b, -f, -d, -k, -audit-file, -audit-url, -s.
-// fc — результат LoadFileConfig; может быть nil, если файл не задан.
-func Init(serverAddress, baseURL, pathToStoreURL, databaseDsn, secretKeyForJWT, auditFile, auditURL string, enableHTTPS bool, fc *FileConfig) {
+// переменные окружения → флаги (opts) → файл конфигурации → встроенные умолчания.
+func Init(opts InitOptions) {
 	cfg := &Config{}
 	if err := env.Parse(cfg); err != nil {
 		log.Fatal(err)
 	}
+
+	fc := opts.FileConfig
 
 	// strVal выбирает первое непустое значение из цепочки: env → flag → file → default.
 	strVal := func(envVal, flagVal string, fileVal *string, def string) string {
@@ -94,22 +108,22 @@ func Init(serverAddress, baseURL, pathToStoreURL, databaseDsn, secretKeyForJWT, 
 		return def
 	}
 
-	addr := strVal(cfg.ServerAddress, serverAddress, fileServerAddress(fc), "localhost:8080")
+	addr := strVal(cfg.ServerAddress, opts.ServerAddress, fcField(fc, func(c *FileConfig) *string { return c.ServerAddress }), "localhost:8080")
 	addr = strings.TrimPrefix(addr, "http://")
 	addr = strings.TrimPrefix(addr, "https://")
 	cfg.ServerAddress = addr
 
-	baseURLVal := strVal(cfg.BaseURL, baseURL, fileBaseURL(fc), "http://localhost:8080/")
+	baseURLVal := strVal(cfg.BaseURL, opts.BaseURL, fcField(fc, func(c *FileConfig) *string { return c.BaseURL }), "http://localhost:8080/")
 	if !strings.HasSuffix(baseURLVal, "/") {
 		baseURLVal += "/"
 	}
 	cfg.BaseURL = baseURLVal
 
-	cfg.PathStoreURL = strVal(cfg.PathStoreURL, pathToStoreURL, filePathStoreURL(fc), "./storage/store_url.txt")
-	cfg.DatabaseDsn = strVal(cfg.DatabaseDsn, databaseDsn, fileDatabaseDsn(fc), "")
-	cfg.SecretKeyForJWT = strVal(cfg.SecretKeyForJWT, secretKeyForJWT, fileSecretKey(fc), "")
-	cfg.AuditFile = strVal(cfg.AuditFile, auditFile, fileAuditFile(fc), "")
-	cfg.AuditURL = strVal(cfg.AuditURL, auditURL, fileAuditURL(fc), "")
+	cfg.PathStoreURL = strVal(cfg.PathStoreURL, opts.PathStoreURL, fcField(fc, func(c *FileConfig) *string { return c.PathStoreURL }), "./storage/store_url.txt")
+	cfg.DatabaseDsn = strVal(cfg.DatabaseDsn, opts.DatabaseDsn, fcField(fc, func(c *FileConfig) *string { return c.DatabaseDsn }), "")
+	cfg.SecretKeyForJWT = strVal(cfg.SecretKeyForJWT, opts.SecretKeyForJWT, fcField(fc, func(c *FileConfig) *string { return c.SecretKeyForJWT }), "")
+	cfg.AuditFile = strVal(cfg.AuditFile, opts.AuditFile, fcField(fc, func(c *FileConfig) *string { return c.AuditFile }), "")
+	cfg.AuditURL = strVal(cfg.AuditURL, opts.AuditURL, fcField(fc, func(c *FileConfig) *string { return c.AuditURL }), "")
 
 	if cfg.WorkerNum == 0 {
 		cfg.WorkerNum = 5
@@ -117,7 +131,7 @@ func Init(serverAddress, baseURL, pathToStoreURL, databaseDsn, secretKeyForJWT, 
 
 	// EnableHTTPS: env (already in cfg) → flag → file → false
 	if !cfg.EnableHTTPS {
-		if enableHTTPS {
+		if opts.EnableHTTPS {
 			cfg.EnableHTTPS = true
 		} else if fc != nil && fc.EnableHTTPS != nil {
 			cfg.EnableHTTPS = *fc.EnableHTTPS
@@ -127,53 +141,10 @@ func Init(serverAddress, baseURL, pathToStoreURL, databaseDsn, secretKeyForJWT, 
 	AppConfig = cfg
 }
 
-// helpers to safely dereference optional FileConfig string fields.
-
-func fileServerAddress(fc *FileConfig) *string {
+// fcField safely читает поле-указатель из fc, возвращая nil если fc == nil.
+func fcField[T any](fc *FileConfig, get func(*FileConfig) *T) *T {
 	if fc == nil {
 		return nil
 	}
-	return fc.ServerAddress
-}
-
-func fileBaseURL(fc *FileConfig) *string {
-	if fc == nil {
-		return nil
-	}
-	return fc.BaseURL
-}
-
-func filePathStoreURL(fc *FileConfig) *string {
-	if fc == nil {
-		return nil
-	}
-	return fc.PathStoreURL
-}
-
-func fileDatabaseDsn(fc *FileConfig) *string {
-	if fc == nil {
-		return nil
-	}
-	return fc.DatabaseDsn
-}
-
-func fileSecretKey(fc *FileConfig) *string {
-	if fc == nil {
-		return nil
-	}
-	return fc.SecretKeyForJWT
-}
-
-func fileAuditFile(fc *FileConfig) *string {
-	if fc == nil {
-		return nil
-	}
-	return fc.AuditFile
-}
-
-func fileAuditURL(fc *FileConfig) *string {
-	if fc == nil {
-		return nil
-	}
-	return fc.AuditURL
+	return get(fc)
 }

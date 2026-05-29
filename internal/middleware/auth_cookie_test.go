@@ -16,8 +16,12 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	config.Init("localhost:8080", "http://localhost:8080/",
-		filepath.Join(dir, "store.txt"), "", "test-secret-key", "", "", false, nil)
+	config.Init(config.InitOptions{
+		ServerAddress:   "localhost:8080",
+		BaseURL:         "http://localhost:8080/",
+		PathStoreURL:    filepath.Join(dir, "store.txt"),
+		SecretKeyForJWT: "test-secret-key",
+	})
 	os.Exit(m.Run())
 }
 
