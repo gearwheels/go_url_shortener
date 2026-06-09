@@ -107,6 +107,12 @@ func setAuthCookie(w http.ResponseWriter, userID string) {
 	})
 }
 
+// ParseAuthCookie validates a "userID:signature" credential string.
+// Used by the gRPC auth interceptor to reuse the same HMAC logic as HTTP.
+func ParseAuthCookie(value string) (string, error) {
+	return validateCookie(value)
+}
+
 // AuthMiddleware проверяет HMAC-подписанную cookie «auth».
 // При отсутствии или невалидной cookie генерирует новый UUID и устанавливает новую cookie.
 // Во всех случаях помещает userID в контекст запроса для последующего чтения через GetUserID.

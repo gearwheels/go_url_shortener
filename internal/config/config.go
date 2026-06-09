@@ -38,6 +38,8 @@ type Config struct {
 	// TrustedSubnet — CIDR доверенной подсети для эндпоинта /api/internal/stats.
 	// Пустая строка запрещает доступ для всех.
 	TrustedSubnet string `env:"TRUSTED_SUBNET"`
+	// GRPCAddress — адрес для запуска gRPC-сервера (например "localhost:50051").
+	GRPCAddress string `env:"GRPC_ADDRESS"`
 }
 
 // FileConfig содержит настройки, загружаемые из JSON-файла конфигурации.
@@ -52,6 +54,7 @@ type FileConfig struct {
 	AuditFile       *string `json:"audit_file"`
 	AuditURL        *string `json:"audit_url"`
 	TrustedSubnet   *string `json:"trusted_subnet"`
+	GRPCAddress     *string `json:"grpc_address"`
 }
 
 // LoadFileConfig читает и разбирает JSON-файл конфигурации.
@@ -83,6 +86,7 @@ type InitOptions struct {
 	AuditURL        string
 	EnableHTTPS     bool
 	TrustedSubnet   string
+	GRPCAddress     string
 	FileConfig      *FileConfig
 }
 
@@ -130,6 +134,7 @@ func Init(opts InitOptions) {
 	cfg.AuditFile = strVal(cfg.AuditFile, opts.AuditFile, fcField(fc, func(c *FileConfig) *string { return c.AuditFile }), "")
 	cfg.AuditURL = strVal(cfg.AuditURL, opts.AuditURL, fcField(fc, func(c *FileConfig) *string { return c.AuditURL }), "")
 	cfg.TrustedSubnet = strVal(cfg.TrustedSubnet, opts.TrustedSubnet, fcField(fc, func(c *FileConfig) *string { return c.TrustedSubnet }), "")
+	cfg.GRPCAddress = strVal(cfg.GRPCAddress, opts.GRPCAddress, fcField(fc, func(c *FileConfig) *string { return c.GRPCAddress }), "localhost:50051")
 
 	if cfg.WorkerNum == 0 {
 		cfg.WorkerNum = 5

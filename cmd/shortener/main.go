@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,14 +20,18 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/gearwheels/go_url_shortener/internal/audit"
 	"github.com/gearwheels/go_url_shortener/internal/config"
+	"github.com/gearwheels/go_url_shortener/internal/grpcserver"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
 	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	service "github.com/gearwheels/go_url_shortener/internal/service"
 	"github.com/gearwheels/go_url_shortener/migrations"
+	pb "github.com/gearwheels/go_url_shortener/proto"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 )
@@ -71,6 +76,7 @@ func main() {
 	f := flag.String("f", "", "destination file")
 	d := flag.String("d", "", "destination database")
 	k := flag.String("k", "", "destination secret")
+	g := flag.String("g", "", "gRPC listen address")
 	s := flag.Bool("s", false, "enable HTTPS (TLS)")
 	t := flag.String("t", "", "trusted subnet CIDR for /api/internal/stats")
 	auditFile := flag.String("audit-file", "", "path to audit log file")
@@ -97,6 +103,7 @@ func main() {
 		AuditURL:        *auditURL,
 		EnableHTTPS:     *s,
 		TrustedSubnet:   *t,
+		GRPCAddress:     *g,
 		FileConfig:      fileConfig,
 	})
 
@@ -183,6 +190,33 @@ func main() {
 		}
 	}()
 
+	// gRPC server
+	grpcOpts := []grpc.ServerOption{
+		grpc.UnaryInterceptor(grpcserver.AuthInterceptor),
+	}
+	if config.AppConfig.EnableHTTPS {
+		tlsCfg, tlsErr := buildTLSConfig()
+		if tlsErr != nil {
+			slog.Error("Failed to build TLS config for gRPC", slog.String("err", tlsErr.Error()))
+		} else {
+			grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+		}
+	}
+	grpcSrv := grpc.NewServer(grpcOpts...)
+	pb.RegisterShortenerServiceServer(grpcSrv, &grpcserver.ShortenerServer{})
+
+	go func() {
+		ln, listenErr := net.Listen("tcp", config.AppConfig.GRPCAddress)
+		if listenErr != nil {
+			slog.Error("Failed to listen for gRPC", slog.String("addr", config.AppConfig.GRPCAddress), slog.String("err", listenErr.Error()))
+			return
+		}
+		slog.Info("gRPC server starting", slog.String("addr", config.AppConfig.GRPCAddress))
+		if serveErr := grpcSrv.Serve(ln); serveErr != nil {
+			slog.Error("gRPC server error", slog.String("err", serveErr.Error()))
+		}
+	}()
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 	<-quit
@@ -194,6 +228,8 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("Server shutdown error", slog.String("err", err.Error()))
 	}
+
+	grpcSrv.GracefulStop()
 
 	close(tasksDelCh)
 	wg.Wait()
