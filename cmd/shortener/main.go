@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
+	"crypto/tls"
 	"database/sql"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -62,15 +66,37 @@ func main() {
 
 	slog.SetDefault(logger)
 
-	a := flag.String("a", "localhost:8080", "start up address for the server")
-	b := flag.String("b", "http://localhost:8080/", "destination address")
-	f := flag.String("f", "./storage/store_url.txt", "destination file")
-	d := flag.String("d", "postgres://shortener:shortener@localhost:5432/shortener", "destination database")
-	s := flag.String("s", "", "destination secret")
+	a := flag.String("a", "", "start up address for the server")
+	b := flag.String("b", "", "destination address")
+	f := flag.String("f", "", "destination file")
+	d := flag.String("d", "", "destination database")
+	k := flag.String("k", "", "destination secret")
+	s := flag.Bool("s", false, "enable HTTPS (TLS)")
 	auditFile := flag.String("audit-file", "", "path to audit log file")
 	auditURL := flag.String("audit-url", "", "URL of remote audit receiver")
+	var configPath string
+	flag.StringVar(&configPath, "c", "", "path to JSON config file")
+	flag.StringVar(&configPath, "config", "", "path to JSON config file")
 	flag.Parse()
-	config.Init(*a, *b, *f, *d, *s, *auditFile, *auditURL)
+	// CONFIG env var overrides -c/-config flag
+	if envConfig := os.Getenv("CONFIG"); envConfig != "" {
+		configPath = envConfig
+	}
+	fileConfig, err := config.LoadFileConfig(configPath)
+	if err != nil {
+		slog.Error("Failed to load config file", slog.String("path", configPath), slog.String("err", err.Error()))
+	}
+	config.Init(config.InitOptions{
+		ServerAddress:   *a,
+		BaseURL:         *b,
+		PathStoreURL:    *f,
+		DatabaseDsn:     *d,
+		SecretKeyForJWT: *k,
+		AuditFile:       *auditFile,
+		AuditURL:        *auditURL,
+		EnableHTTPS:     *s,
+		FileConfig:      fileConfig,
+	})
 
 	auditor := audit.NewAuditor()
 	if config.AppConfig.AuditFile != "" {
@@ -117,7 +143,7 @@ func main() {
 	router.Get("/api/user/urls", handler.UserURL)
 	router.Delete("/api/user/urls", handler.DeleteBatchHandler(tasksDelCh))
 
-	fmt.Printf("URL Shortener server starting on %s\n", *a)
+	fmt.Printf("URL Shortener server starting on %s\n", config.AppConfig.ServerAddress)
 	fmt.Println("\nEndpoints:")
 	fmt.Println("  POST / - Shorten URL")
 	fmt.Println("    Content-Type: text/plain")
@@ -127,9 +153,49 @@ func main() {
 	fmt.Println("  GET /{id} - Redirect to original URL")
 	fmt.Println("    Response: 307 with Location header")
 
-	if err := http.ListenAndServe(*a, router); err != nil {
-		slog.Error("Server error:", slog.String("err", err.Error()))
+	srv := &http.Server{
+		Addr:    config.AppConfig.ServerAddress,
+		Handler: router,
 	}
+
+	go func() {
+		var serveErr error
+		if config.AppConfig.EnableHTTPS {
+			tlsCfg, tlsErr := buildTLSConfig()
+			if tlsErr != nil {
+				slog.Error("Failed to build TLS config", slog.String("err", tlsErr.Error()))
+				return
+			}
+			ln, listenErr := tls.Listen("tcp", config.AppConfig.ServerAddress, tlsCfg)
+			if listenErr != nil {
+				slog.Error("Failed to start HTTPS listener", slog.String("err", listenErr.Error()))
+				return
+			}
+			serveErr = srv.Serve(ln)
+		} else {
+			serveErr = srv.ListenAndServe()
+		}
+		if serveErr != nil && serveErr != http.ErrServerClosed {
+			slog.Error("Server error", slog.String("err", serveErr.Error()))
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	<-quit
+
+	slog.Info("Shutting down server, draining in-flight requests...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("Server shutdown error", slog.String("err", err.Error()))
+	}
+
+	close(tasksDelCh)
+	wg.Wait()
+
+	slog.Info("Server stopped")
 }
 
 func runMigrations(db *sql.DB) error {

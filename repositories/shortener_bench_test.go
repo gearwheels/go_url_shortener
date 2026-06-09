@@ -17,8 +17,12 @@ func initBenchConfig(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		config.Init("localhost:8080", "http://localhost:8080/", filepath.Join(dir, "store.txt"),
-			"", "secret", "", "")
+		config.Init(config.InitOptions{
+			ServerAddress:   "localhost:8080",
+			BaseURL:         "http://localhost:8080/",
+			PathStoreURL:    filepath.Join(dir, "store.txt"),
+			SecretKeyForJWT: "secret",
+		})
 	}
 }
 

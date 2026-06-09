@@ -22,8 +22,12 @@ func initExampleEnv() {
 		if err != nil {
 			panic(err)
 		}
-		config.Init("localhost:8080", "http://localhost:8080/",
-			filepath.Join(dir, "store.txt"), "", "example-secret", "", "")
+		config.Init(config.InitOptions{
+			ServerAddress:   "localhost:8080",
+			BaseURL:         "http://localhost:8080/",
+			PathStoreURL:    filepath.Join(dir, "store.txt"),
+			SecretKeyForJWT: "example-secret",
+		})
 	}
 	if service.Shortener == nil {
 		service.Shortener = service.NewShortenerService(repo.NewRepoShortener())
