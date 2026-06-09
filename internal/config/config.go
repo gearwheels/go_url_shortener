@@ -144,6 +144,16 @@ func Init(opts InitOptions) {
 		}
 	}
 
+	AppConfig = &Config{
+		ServerAddress:   cfg.ServerAddress,
+		BaseURL:         cfg.BaseURL,
+		PathStoreURL:    cfg.PathStoreURL,
+		DatabaseDsn:     cfg.DatabaseDsn,
+		SecretKeyForJWT: cfg.SecretKeyForJWT,
+		WorkerNum:       cfg.WorkerNum,
+		AuditFile:       cfg.AuditFile,
+		AuditURL:        cfg.AuditURL,
+		EnableHTTPS:     cfg.EnableHTTPS,
 	AppConfig = cfg
 }
 
