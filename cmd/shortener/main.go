@@ -66,10 +66,10 @@ func main() {
 
 	slog.SetDefault(logger)
 
-	a := flag.String("a", "", "start up address for the server")
-	b := flag.String("b", "", "destination address")
-	f := flag.String("f", "", "destination file")
-	d := flag.String("d", "", "destination database")
+	a := flag.String("a", "localhost:8080", "start up address for the server")
+	b := flag.String("b", "http://localhost:8080/", "destination address")
+	f := flag.String("f", "./storage/store_url.txt", "destination file")
+	d := flag.String("d", "postgres://shortener:shortener@localhost:5432/shortener", "destination database")
 	k := flag.String("k", "", "destination secret")
 	s := flag.Bool("s", false, "enable HTTPS (TLS)")
 	auditFile := flag.String("audit-file", "", "path to audit log file")
@@ -153,6 +153,24 @@ func main() {
 	fmt.Println("  GET /{id} - Redirect to original URL")
 	fmt.Println("    Response: 307 with Location header")
 
+	if config.AppConfig.EnableHTTPS {
+		tlsCfg, err := buildTLSConfig()
+		if err != nil {
+			slog.Error("Failed to build TLS config", slog.String("err", err.Error()))
+			return
+		}
+		ln, err := tls.Listen("tcp", *a, tlsCfg)
+		if err != nil {
+			slog.Error("Failed to start HTTPS listener", slog.String("err", err.Error()))
+			return
+		}
+		if err := http.Serve(ln, router); err != nil {
+			slog.Error("Server error", slog.String("err", err.Error()))
+		}
+	} else {
+		if err := http.ListenAndServe(*a, router); err != nil {
+			slog.Error("Server error", slog.String("err", err.Error()))
+		}
 	srv := &http.Server{
 		Addr:    config.AppConfig.ServerAddress,
 		Handler: router,
