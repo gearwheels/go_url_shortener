@@ -20,7 +20,13 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	path := filepath.Join(dir, "store_url.txt")
-	config.Init("localhost:8888", "http://localhost:8000/", path, "postgres://shortener:shortener@localhost:5432/shortener", "test-secret", "", "")
+	config.Init(config.InitOptions{
+		ServerAddress:   "localhost:8888",
+		BaseURL:         "http://localhost:8000/",
+		PathStoreURL:    path,
+		DatabaseDsn:     "postgres://shortener:shortener@localhost:5432/shortener",
+		SecretKeyForJWT: "test-secret",
+	})
 	Shortener = NewShortenerService(repo.NewRepoShortener())
 	os.Exit(m.Run())
 }
