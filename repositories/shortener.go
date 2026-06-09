@@ -228,6 +228,20 @@ func (r *URLShortener) GetListURLByUserID(ctx context.Context, userID string) ([
 	return out, nil
 }
 
+func (r *URLShortener) Stats(_ context.Context) (urlCount, userCount int, err error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	urlCount = len(r.byID)
+	seen := make(map[string]struct{}, urlCount)
+	for _, u := range r.byID {
+		if u.UserID != "" {
+			seen[u.UserID] = struct{}{}
+		}
+	}
+	userCount = len(seen)
+	return
+}
+
 // Вспомогательные методы для тестов и поддержки файла‑хранилища.
 
 func (r *URLShortener) RLockMu() {

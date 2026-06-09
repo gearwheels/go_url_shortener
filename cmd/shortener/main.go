@@ -72,6 +72,7 @@ func main() {
 	d := flag.String("d", "", "destination database")
 	k := flag.String("k", "", "destination secret")
 	s := flag.Bool("s", false, "enable HTTPS (TLS)")
+	t := flag.String("t", "", "trusted subnet CIDR for /api/internal/stats")
 	auditFile := flag.String("audit-file", "", "path to audit log file")
 	auditURL := flag.String("audit-url", "", "URL of remote audit receiver")
 	var configPath string
@@ -95,6 +96,7 @@ func main() {
 		AuditFile:       *auditFile,
 		AuditURL:        *auditURL,
 		EnableHTTPS:     *s,
+		TrustedSubnet:   *t,
 		FileConfig:      fileConfig,
 	})
 
@@ -142,6 +144,7 @@ func main() {
 	router.Get("/ping", handler.CheckDBStatus)
 	router.Get("/api/user/urls", handler.UserURL)
 	router.Delete("/api/user/urls", handler.DeleteBatchHandler(tasksDelCh))
+	router.Get("/api/internal/stats", handler.StatsHandler)
 
 	fmt.Printf("URL Shortener server starting on %s\n", config.AppConfig.ServerAddress)
 	fmt.Println("\nEndpoints:")

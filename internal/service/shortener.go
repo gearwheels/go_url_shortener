@@ -106,6 +106,8 @@ type URLShortenerInterface interface {
 	GetAllShortenerURL(ctx context.Context, userID string) ([]repo.URL, error)
 	// MarkOnDeleteBatch помечает список коротких URL пользователя как удалённые (soft delete).
 	MarkOnDeleteBatch(ctx context.Context, userID string, listID []string) error
+	// GetStats возвращает общее число сокращённых URL и уникальных пользователей.
+	GetStats(ctx context.Context) (urlCount, userCount int, err error)
 	// WorkerDeleteFromURLTable воркер фонового удаления: читает задания из tasksDelCh
 	// и физически удаляет записи, батчируя по 20 операций в транзакцию (Postgres).
 	WorkerDeleteFromURLTable(tasksDelCh <-chan schemasshortener.Task, wg *sync.WaitGroup)
@@ -219,6 +221,10 @@ func (s *shortenerService) GetOriginalURL(ctx context.Context, id string) (strin
 		return "", false, errors.New("short URL not found")
 	}
 	return u.URL, u.DeletedFlag, nil
+}
+
+func (s *shortenerService) GetStats(ctx context.Context) (urlCount, userCount int, err error) {
+	return s.repository.Stats(ctx)
 }
 
 func (s *shortenerService) MarkOnDeleteBatch(ctx context.Context, userID string, listID []string) error {

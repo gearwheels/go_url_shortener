@@ -8,6 +8,7 @@
 //	GET  /{id}                  — RedirectHandler
 //	GET  /ping                  — CheckDBStatus
 //	GET  /api/user/urls         — UserURL
+//	GET  /api/internal/stats    — StatsHandler
 //	DELETE /api/user/urls       — DeleteBatchHandler
 package handler
 
@@ -18,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 
@@ -388,4 +390,41 @@ func DeleteBatch(w http.ResponseWriter, r *http.Request, tasksDelCh chan<- schem
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// StatsHandler обрабатывает GET /api/internal/stats.
+// Доступен только из доверенной подсети (X-Real-IP vs TrustedSubnet).
+// Возвращает {"urls":<int>,"users":<int>} или 403 Forbidden.
+func StatsHandler(w http.ResponseWriter, r *http.Request) {
+	subnet := config.AppConfig.TrustedSubnet
+	if subnet == "" {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+
+	clientIP := net.ParseIP(r.Header.Get("X-Real-IP"))
+	if clientIP == nil {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+
+	_, cidr, err := net.ParseCIDR(subnet)
+	if err != nil || !cidr.Contains(clientIP) {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+
+	urls, users, err := service.Shortener.GetStats(r.Context())
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error("StatsHandler: GetStats failed", "error", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(struct {
+		URLs  int `json:"urls"`
+		Users int `json:"users"`
+	}{urls, users})
 }

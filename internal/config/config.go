@@ -35,6 +35,9 @@ type Config struct {
 	AuditURL string `env:"AUDIT_URL"`
 	// EnableHTTPS — включает TLS-сервер вместо обычного HTTP.
 	EnableHTTPS bool `env:"ENABLE_HTTPS"`
+	// TrustedSubnet — CIDR доверенной подсети для эндпоинта /api/internal/stats.
+	// Пустая строка запрещает доступ для всех.
+	TrustedSubnet string `env:"TRUSTED_SUBNET"`
 }
 
 // FileConfig содержит настройки, загружаемые из JSON-файла конфигурации.
@@ -48,6 +51,7 @@ type FileConfig struct {
 	EnableHTTPS     *bool   `json:"enable_https"`
 	AuditFile       *string `json:"audit_file"`
 	AuditURL        *string `json:"audit_url"`
+	TrustedSubnet   *string `json:"trusted_subnet"`
 }
 
 // LoadFileConfig читает и разбирает JSON-файл конфигурации.
@@ -78,6 +82,7 @@ type InitOptions struct {
 	AuditFile       string
 	AuditURL        string
 	EnableHTTPS     bool
+	TrustedSubnet   string
 	FileConfig      *FileConfig
 }
 
@@ -124,6 +129,7 @@ func Init(opts InitOptions) {
 	cfg.SecretKeyForJWT = strVal(cfg.SecretKeyForJWT, opts.SecretKeyForJWT, fcField(fc, func(c *FileConfig) *string { return c.SecretKeyForJWT }), "")
 	cfg.AuditFile = strVal(cfg.AuditFile, opts.AuditFile, fcField(fc, func(c *FileConfig) *string { return c.AuditFile }), "")
 	cfg.AuditURL = strVal(cfg.AuditURL, opts.AuditURL, fcField(fc, func(c *FileConfig) *string { return c.AuditURL }), "")
+	cfg.TrustedSubnet = strVal(cfg.TrustedSubnet, opts.TrustedSubnet, fcField(fc, func(c *FileConfig) *string { return c.TrustedSubnet }), "")
 
 	if cfg.WorkerNum == 0 {
 		cfg.WorkerNum = 5
