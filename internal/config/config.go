@@ -1,7 +1,8 @@
 // Package config хранит конфигурацию приложения.
 // Значения могут быть заданы флагами командной строки (через main.go),
 // переменными окружения (SERVERADDRESS, BASEURL, FILE_STORAGE_PATH,
-// DATABASE_DSN, SECRET_KEY_FOR_JWT, AUDIT_FILE, AUDIT_URL, ENABLE_HTTPS)
+// DATABASE_DSN, SECRET_KEY_FOR_JWT, AUDIT_FILE, AUDIT_URL, ENABLE_HTTPS,
+// TRUSTED_SUBNET)
 // или файлом конфигурации JSON (путь задаётся флагом -c/-config или CONFIG).
 // Приоритет (убывает): переменные окружения → флаги → файл → умолчания.
 package config

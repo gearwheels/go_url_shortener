@@ -71,10 +71,10 @@ func main() {
 
 	slog.SetDefault(logger)
 
-	a := flag.String("a", "", "start up address for the server")
-	b := flag.String("b", "", "destination address")
-	f := flag.String("f", "", "destination file")
-	d := flag.String("d", "", "destination database")
+	a := flag.String("a", "localhost:8080", "start up address for the server")
+	b := flag.String("b", "http://localhost:8080/", "destination address")
+	f := flag.String("f", "./storage/store_url.txt", "destination file")
+	d := flag.String("d", "postgres://shortener:shortener@localhost:5432/shortener", "destination database")
 	k := flag.String("k", "", "destination secret")
 	g := flag.String("g", "", "gRPC listen address")
 	s := flag.Bool("s", false, "enable HTTPS (TLS)")
@@ -153,15 +153,7 @@ func main() {
 	router.Delete("/api/user/urls", handler.DeleteBatchHandler(tasksDelCh))
 	router.Get("/api/internal/stats", handler.StatsHandler)
 
-	fmt.Printf("URL Shortener server starting on %s\n", config.AppConfig.ServerAddress)
-	fmt.Println("\nEndpoints:")
-	fmt.Println("  POST / - Shorten URL")
-	fmt.Println("    Content-Type: text/plain")
-	fmt.Println("    Body: URL to shorten")
-	fmt.Println("    Response: 201 with shortened URL")
-	fmt.Println()
-	fmt.Println("  GET /{id} - Redirect to original URL")
-	fmt.Println("    Response: 307 with Location header")
+	slog.Info("URL Shortener server starting", slog.String("addr", config.AppConfig.ServerAddress))
 
 	srv := &http.Server{
 		Addr:    config.AppConfig.ServerAddress,
