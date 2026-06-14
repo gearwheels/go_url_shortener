@@ -1,7 +1,8 @@
 // Package config хранит конфигурацию приложения.
 // Значения могут быть заданы флагами командной строки (через main.go),
 // переменными окружения (SERVERADDRESS, BASEURL, FILE_STORAGE_PATH,
-// DATABASE_DSN, SECRET_KEY_FOR_JWT, AUDIT_FILE, AUDIT_URL, ENABLE_HTTPS)
+// DATABASE_DSN, SECRET_KEY_FOR_JWT, AUDIT_FILE, AUDIT_URL, ENABLE_HTTPS,
+// TRUSTED_SUBNET)
 // или файлом конфигурации JSON (путь задаётся флагом -c/-config или CONFIG).
 // Приоритет (убывает): переменные окружения → флаги → файл → умолчания.
 package config
@@ -144,16 +145,6 @@ func Init(opts InitOptions) {
 		}
 	}
 
-	AppConfig = &Config{
-		ServerAddress:   cfg.ServerAddress,
-		BaseURL:         cfg.BaseURL,
-		PathStoreURL:    cfg.PathStoreURL,
-		DatabaseDsn:     cfg.DatabaseDsn,
-		SecretKeyForJWT: cfg.SecretKeyForJWT,
-		WorkerNum:       cfg.WorkerNum,
-		AuditFile:       cfg.AuditFile,
-		AuditURL:        cfg.AuditURL,
-		EnableHTTPS:     cfg.EnableHTTPS,
 	AppConfig = cfg
 }
 

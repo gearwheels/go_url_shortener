@@ -146,34 +146,8 @@ func main() {
 	router.Delete("/api/user/urls", handler.DeleteBatchHandler(tasksDelCh))
 	router.Get("/api/internal/stats", handler.StatsHandler)
 
-	fmt.Printf("URL Shortener server starting on %s\n", config.AppConfig.ServerAddress)
-	fmt.Println("\nEndpoints:")
-	fmt.Println("  POST / - Shorten URL")
-	fmt.Println("    Content-Type: text/plain")
-	fmt.Println("    Body: URL to shorten")
-	fmt.Println("    Response: 201 with shortened URL")
-	fmt.Println()
-	fmt.Println("  GET /{id} - Redirect to original URL")
-	fmt.Println("    Response: 307 with Location header")
+	slog.Info("URL Shortener server starting", slog.String("addr", config.AppConfig.ServerAddress))
 
-	if config.AppConfig.EnableHTTPS {
-		tlsCfg, err := buildTLSConfig()
-		if err != nil {
-			slog.Error("Failed to build TLS config", slog.String("err", err.Error()))
-			return
-		}
-		ln, err := tls.Listen("tcp", *a, tlsCfg)
-		if err != nil {
-			slog.Error("Failed to start HTTPS listener", slog.String("err", err.Error()))
-			return
-		}
-		if err := http.Serve(ln, router); err != nil {
-			slog.Error("Server error", slog.String("err", err.Error()))
-		}
-	} else {
-		if err := http.ListenAndServe(*a, router); err != nil {
-			slog.Error("Server error", slog.String("err", err.Error()))
-		}
 	srv := &http.Server{
 		Addr:    config.AppConfig.ServerAddress,
 		Handler: router,
