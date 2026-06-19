@@ -1,16 +1,19 @@
-syntax = "proto3";
+edition = "2023";
 
 package shortener;
 
-option go_package = "github.com/gearwheels/go_url_shortener/proto";
+import "google/protobuf/go_features.proto";
 
-import "google/protobuf/empty.proto";
+option go_package = "github.com/gearwheels/go_url_shortener/proto";
+option features.(pb.go).api_level = API_OPAQUE;
 
 service ShortenerService {
   rpc ShortenURL (URLShortenRequest) returns (URLShortenResponse);
   rpc ExpandURL (URLExpandRequest) returns (URLExpandResponse);
-  rpc ListUserURLs (google.protobuf.Empty) returns (UserURLsResponse);
+  rpc ListUserURLs (ListUserURLsRequest) returns (UserURLsResponse);
 }
+
+message ListUserURLsRequest {}
 
 message URLShortenRequest {
   string url = 1;

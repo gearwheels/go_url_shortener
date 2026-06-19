@@ -116,6 +116,10 @@ func main() {
 	}
 	handler.Auditor = auditor
 
+	if err := handler.InitTrustedSubnet(config.AppConfig.TrustedSubnet); err != nil {
+		slog.Error("Invalid trusted subnet CIDR", slog.String("err", err.Error()))
+	}
+
 	tasksDelCh := make(chan schemasshortener.Task, 20)
 
 	pgExist := config.AppConfig.DatabaseDsn != ""
@@ -151,9 +155,19 @@ func main() {
 	router.Get("/ping", handler.CheckDBStatus)
 	router.Get("/api/user/urls", handler.UserURL)
 	router.Delete("/api/user/urls", handler.DeleteBatchHandler(tasksDelCh))
-	router.Get("/api/internal/stats", handler.StatsHandler)
+	router.With(handler.TrustedSubnetMiddleware).Get("/api/internal/stats", handler.StatsHandler)
 
 	slog.Info("URL Shortener server starting", slog.String("addr", config.AppConfig.ServerAddress))
+
+	var tlsCfg *tls.Config
+	if config.AppConfig.EnableHTTPS {
+		var tlsErr error
+		tlsCfg, tlsErr = buildTLSConfig()
+		if tlsErr != nil {
+			slog.Error("Failed to build TLS config", slog.String("err", tlsErr.Error()))
+			os.Exit(1)
+		}
+	}
 
 	srv := &http.Server{
 		Addr:    config.AppConfig.ServerAddress,
@@ -162,12 +176,7 @@ func main() {
 
 	go func() {
 		var serveErr error
-		if config.AppConfig.EnableHTTPS {
-			tlsCfg, tlsErr := buildTLSConfig()
-			if tlsErr != nil {
-				slog.Error("Failed to build TLS config", slog.String("err", tlsErr.Error()))
-				return
-			}
+		if tlsCfg != nil {
 			ln, listenErr := tls.Listen("tcp", config.AppConfig.ServerAddress, tlsCfg)
 			if listenErr != nil {
 				slog.Error("Failed to start HTTPS listener", slog.String("err", listenErr.Error()))
@@ -186,13 +195,8 @@ func main() {
 	grpcOpts := []grpc.ServerOption{
 		grpc.UnaryInterceptor(grpcserver.AuthInterceptor),
 	}
-	if config.AppConfig.EnableHTTPS {
-		tlsCfg, tlsErr := buildTLSConfig()
-		if tlsErr != nil {
-			slog.Error("Failed to build TLS config for gRPC", slog.String("err", tlsErr.Error()))
-		} else {
-			grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
-		}
+	if tlsCfg != nil {
+		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
 	}
 	grpcSrv := grpc.NewServer(grpcOpts...)
 	pb.RegisterShortenerServiceServer(grpcSrv, &grpcserver.ShortenerServer{})
@@ -209,9 +213,10 @@ func main() {
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
-	<-quit
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	defer stop()
+	<-ctx.Done()
+	stop()
 
 	slog.Info("Shutting down server, draining in-flight requests...")
 

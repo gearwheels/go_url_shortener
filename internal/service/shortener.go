@@ -22,6 +22,9 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// ErrURLNotFound is returned when a short URL does not exist in the store.
+var ErrURLNotFound = errors.New("short URL not found")
+
 var randBufPool = sync.Pool{New: func() any {
 	b := make([]byte, 7)
 	return &b
@@ -218,7 +221,7 @@ func (s *shortenerService) GetOriginalURL(ctx context.Context, id string) (strin
 		return "", false, err
 	}
 	if u.URL == "" {
-		return "", false, errors.New("short URL not found")
+		return "", false, ErrURLNotFound
 	}
 	return u.URL, u.DeletedFlag, nil
 }

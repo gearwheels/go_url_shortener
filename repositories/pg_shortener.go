@@ -192,11 +192,18 @@ func (r *URLPostgresRepository) List(ctx context.Context) ([]URL, error) {
 }
 
 func (r *URLPostgresRepository) Stats(ctx context.Context) (urlCount, userCount int, err error) {
-	if err = r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM urls`).Scan(&urlCount); err != nil {
-		return
+	tx, err := r.db.BeginTxx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return 0, 0, err
 	}
-	err = r.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT user_id) FROM urls WHERE user_id != ''`).Scan(&userCount)
-	return
+	defer tx.Rollback()
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM urls`).Scan(&urlCount); err != nil {
+		return 0, 0, err
+	}
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(DISTINCT user_id) FROM urls WHERE user_id != ''`).Scan(&userCount); err != nil {
+		return 0, 0, err
+	}
+	return urlCount, userCount, tx.Commit()
 }
 
 // UpdateIsDelete устанавливает флаг is_deleted для набора short_url конкретного пользователя.

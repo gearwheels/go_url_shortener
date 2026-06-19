@@ -33,6 +33,40 @@ import (
 // Auditor рассылает события аудита наблюдателям; устанавливается в main.go.
 var Auditor *audit.Auditor
 
+// trustedCIDR хранит разобранный CIDR доверенной подсети; nil — подсеть не задана.
+var trustedCIDR *net.IPNet
+
+// InitTrustedSubnet разбирает CIDR один раз при старте.
+// Если cidr пустой — trustedCIDR остаётся nil и StatsHandler будет отдавать 403.
+func InitTrustedSubnet(cidr string) error {
+	if cidr == "" {
+		return nil
+	}
+	_, parsed, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return err
+	}
+	trustedCIDR = parsed
+	return nil
+}
+
+// TrustedSubnetMiddleware проверяет, что X-Real-IP входит в trustedCIDR.
+// Возвращает 403, если подсеть не задана или IP вне диапазона.
+func TrustedSubnetMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if trustedCIDR == nil {
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+		clientIP := net.ParseIP(r.Header.Get("X-Real-IP"))
+		if clientIP == nil || !trustedCIDR.Contains(clientIP) {
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // ShortenHandler обрабатывает POST / с телом text/plain.
 // Принимает оригинальный URL, возвращает короткую ссылку в теле ответа.
 //
@@ -393,27 +427,9 @@ func DeleteBatch(w http.ResponseWriter, r *http.Request, tasksDelCh chan<- schem
 }
 
 // StatsHandler обрабатывает GET /api/internal/stats.
-// Доступен только из доверенной подсети (X-Real-IP vs TrustedSubnet).
-// Возвращает {"urls":<int>,"users":<int>} или 403 Forbidden.
+// Доступен только через TrustedSubnetMiddleware — проверка IP уже выполнена.
+// Возвращает {"urls":<int>,"users":<int>}.
 func StatsHandler(w http.ResponseWriter, r *http.Request) {
-	subnet := config.AppConfig.TrustedSubnet
-	if subnet == "" {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		return
-	}
-
-	clientIP := net.ParseIP(r.Header.Get("X-Real-IP"))
-	if clientIP == nil {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		return
-	}
-
-	_, cidr, err := net.ParseCIDR(subnet)
-	if err != nil || !cidr.Contains(clientIP) {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		return
-	}
-
 	urls, users, err := service.Shortener.GetStats(r.Context())
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

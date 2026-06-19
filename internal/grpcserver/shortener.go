@@ -4,13 +4,13 @@ package grpcserver
 
 import (
 	"context"
+	"errors"
 	"net/url"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/gearwheels/go_url_shortener/internal/config"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
@@ -35,23 +35,30 @@ func (s *ShortenerServer) ShortenURL(ctx context.Context, req *pb.URLShortenRequ
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "build url: %v", err)
 	}
-	return &pb.URLShortenResponse{Result: result}, nil
+	resp := &pb.URLShortenResponse{}
+	resp.SetResult(result)
+	return resp, nil
 }
 
 // ExpandURL соответствует GET /{id}.
 func (s *ShortenerServer) ExpandURL(ctx context.Context, req *pb.URLExpandRequest) (*pb.URLExpandResponse, error) {
 	originalURL, deleted, err := service.Shortener.GetOriginalURL(ctx, req.GetId())
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, "not found: %v", err)
+		if errors.Is(err, service.ErrURLNotFound) {
+			return nil, status.Errorf(codes.NotFound, "not found: %v", err)
+		}
+		return nil, status.Errorf(codes.Internal, "internal error: %v", err)
 	}
 	if deleted {
 		return nil, status.Error(codes.NotFound, "URL deleted")
 	}
-	return &pb.URLExpandResponse{Result: originalURL}, nil
+	resp := &pb.URLExpandResponse{}
+	resp.SetResult(originalURL)
+	return resp, nil
 }
 
 // ListUserURLs соответствует GET /api/user/urls.
-func (s *ShortenerServer) ListUserURLs(ctx context.Context, _ *emptypb.Empty) (*pb.UserURLsResponse, error) {
+func (s *ShortenerServer) ListUserURLs(ctx context.Context, _ *pb.ListUserURLsRequest) (*pb.UserURLsResponse, error) {
 	userID, err := logrequest.GetUserID(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Unauthenticated, "not authenticated")
@@ -63,9 +70,14 @@ func (s *ShortenerServer) ListUserURLs(ctx context.Context, _ *emptypb.Empty) (*
 	data := make([]*pb.URLData, 0, len(urls))
 	for _, u := range urls {
 		shortURL, _ := url.JoinPath(config.AppConfig.BaseURL, u.ShortURL)
-		data = append(data, &pb.URLData{ShortUrl: shortURL, OriginalUrl: u.URL})
+		d := &pb.URLData{}
+		d.SetShortUrl(shortURL)
+		d.SetOriginalUrl(u.URL)
+		data = append(data, d)
 	}
-	return &pb.UserURLsResponse{Url: data}, nil
+	resp := &pb.UserURLsResponse{}
+	resp.SetUrl(data)
+	return resp, nil
 }
 
 // AuthInterceptor — unary-перехватчик для аутентификации через метаданные.
