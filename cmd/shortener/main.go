@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,14 +20,18 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/gearwheels/go_url_shortener/internal/audit"
 	"github.com/gearwheels/go_url_shortener/internal/config"
+	"github.com/gearwheels/go_url_shortener/internal/grpcserver"
 	"github.com/gearwheels/go_url_shortener/internal/handler"
 	logrequest "github.com/gearwheels/go_url_shortener/internal/middleware"
 	schemasshortener "github.com/gearwheels/go_url_shortener/internal/schemas"
 	service "github.com/gearwheels/go_url_shortener/internal/service"
 	"github.com/gearwheels/go_url_shortener/migrations"
+	pb "github.com/gearwheels/go_url_shortener/proto"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 )
@@ -71,7 +76,9 @@ func main() {
 	f := flag.String("f", "./storage/store_url.txt", "destination file")
 	d := flag.String("d", "postgres://shortener:shortener@localhost:5432/shortener", "destination database")
 	k := flag.String("k", "", "destination secret")
+	g := flag.String("g", "", "gRPC listen address")
 	s := flag.Bool("s", false, "enable HTTPS (TLS)")
+	t := flag.String("t", "", "trusted subnet CIDR for /api/internal/stats")
 	auditFile := flag.String("audit-file", "", "path to audit log file")
 	auditURL := flag.String("audit-url", "", "URL of remote audit receiver")
 	var configPath string
@@ -95,6 +102,8 @@ func main() {
 		AuditFile:       *auditFile,
 		AuditURL:        *auditURL,
 		EnableHTTPS:     *s,
+		TrustedSubnet:   *t,
+		GRPCAddress:     *g,
 		FileConfig:      fileConfig,
 	})
 
@@ -106,6 +115,10 @@ func main() {
 		auditor.Subscribe(audit.NewHTTPObserver(config.AppConfig.AuditURL))
 	}
 	handler.Auditor = auditor
+
+	if err := handler.InitTrustedSubnet(config.AppConfig.TrustedSubnet); err != nil {
+		slog.Error("Invalid trusted subnet CIDR", slog.String("err", err.Error()))
+	}
 
 	tasksDelCh := make(chan schemasshortener.Task, 20)
 
@@ -142,35 +155,20 @@ func main() {
 	router.Get("/ping", handler.CheckDBStatus)
 	router.Get("/api/user/urls", handler.UserURL)
 	router.Delete("/api/user/urls", handler.DeleteBatchHandler(tasksDelCh))
+	router.With(handler.TrustedSubnetMiddleware).Get("/api/internal/stats", handler.StatsHandler)
 
-	fmt.Printf("URL Shortener server starting on %s\n", config.AppConfig.ServerAddress)
-	fmt.Println("\nEndpoints:")
-	fmt.Println("  POST / - Shorten URL")
-	fmt.Println("    Content-Type: text/plain")
-	fmt.Println("    Body: URL to shorten")
-	fmt.Println("    Response: 201 with shortened URL")
-	fmt.Println()
-	fmt.Println("  GET /{id} - Redirect to original URL")
-	fmt.Println("    Response: 307 with Location header")
+	slog.Info("URL Shortener server starting", slog.String("addr", config.AppConfig.ServerAddress))
 
+	var tlsCfg *tls.Config
 	if config.AppConfig.EnableHTTPS {
-		tlsCfg, err := buildTLSConfig()
-		if err != nil {
-			slog.Error("Failed to build TLS config", slog.String("err", err.Error()))
-			return
+		var tlsErr error
+		tlsCfg, tlsErr = buildTLSConfig()
+		if tlsErr != nil {
+			slog.Error("Failed to build TLS config", slog.String("err", tlsErr.Error()))
+			os.Exit(1)
 		}
-		ln, err := tls.Listen("tcp", *a, tlsCfg)
-		if err != nil {
-			slog.Error("Failed to start HTTPS listener", slog.String("err", err.Error()))
-			return
-		}
-		if err := http.Serve(ln, router); err != nil {
-			slog.Error("Server error", slog.String("err", err.Error()))
-		}
-	} else {
-		if err := http.ListenAndServe(*a, router); err != nil {
-			slog.Error("Server error", slog.String("err", err.Error()))
-		}
+	}
+
 	srv := &http.Server{
 		Addr:    config.AppConfig.ServerAddress,
 		Handler: router,
@@ -178,12 +176,7 @@ func main() {
 
 	go func() {
 		var serveErr error
-		if config.AppConfig.EnableHTTPS {
-			tlsCfg, tlsErr := buildTLSConfig()
-			if tlsErr != nil {
-				slog.Error("Failed to build TLS config", slog.String("err", tlsErr.Error()))
-				return
-			}
+		if tlsCfg != nil {
 			ln, listenErr := tls.Listen("tcp", config.AppConfig.ServerAddress, tlsCfg)
 			if listenErr != nil {
 				slog.Error("Failed to start HTTPS listener", slog.String("err", listenErr.Error()))
@@ -198,9 +191,32 @@ func main() {
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
-	<-quit
+	// gRPC server
+	grpcOpts := []grpc.ServerOption{
+		grpc.UnaryInterceptor(grpcserver.AuthInterceptor),
+	}
+	if tlsCfg != nil {
+		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+	}
+	grpcSrv := grpc.NewServer(grpcOpts...)
+	pb.RegisterShortenerServiceServer(grpcSrv, &grpcserver.ShortenerServer{})
+
+	go func() {
+		ln, listenErr := net.Listen("tcp", config.AppConfig.GRPCAddress)
+		if listenErr != nil {
+			slog.Error("Failed to listen for gRPC", slog.String("addr", config.AppConfig.GRPCAddress), slog.String("err", listenErr.Error()))
+			return
+		}
+		slog.Info("gRPC server starting", slog.String("addr", config.AppConfig.GRPCAddress))
+		if serveErr := grpcSrv.Serve(ln); serveErr != nil {
+			slog.Error("gRPC server error", slog.String("err", serveErr.Error()))
+		}
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	defer stop()
+	<-ctx.Done()
+	stop()
 
 	slog.Info("Shutting down server, draining in-flight requests...")
 
@@ -209,6 +225,8 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("Server shutdown error", slog.String("err", err.Error()))
 	}
+
+	grpcSrv.GracefulStop()
 
 	close(tasksDelCh)
 	wg.Wait()

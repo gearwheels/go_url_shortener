@@ -1,7 +1,8 @@
 // Package config хранит конфигурацию приложения.
 // Значения могут быть заданы флагами командной строки (через main.go),
 // переменными окружения (SERVERADDRESS, BASEURL, FILE_STORAGE_PATH,
-// DATABASE_DSN, SECRET_KEY_FOR_JWT, AUDIT_FILE, AUDIT_URL, ENABLE_HTTPS)
+// DATABASE_DSN, SECRET_KEY_FOR_JWT, AUDIT_FILE, AUDIT_URL, ENABLE_HTTPS,
+// TRUSTED_SUBNET)
 // или файлом конфигурации JSON (путь задаётся флагом -c/-config или CONFIG).
 // Приоритет (убывает): переменные окружения → флаги → файл → умолчания.
 package config
@@ -35,6 +36,11 @@ type Config struct {
 	AuditURL string `env:"AUDIT_URL"`
 	// EnableHTTPS — включает TLS-сервер вместо обычного HTTP.
 	EnableHTTPS bool `env:"ENABLE_HTTPS"`
+	// TrustedSubnet — CIDR доверенной подсети для эндпоинта /api/internal/stats.
+	// Пустая строка запрещает доступ для всех.
+	TrustedSubnet string `env:"TRUSTED_SUBNET"`
+	// GRPCAddress — адрес для запуска gRPC-сервера (например "localhost:50051").
+	GRPCAddress string `env:"GRPC_ADDRESS"`
 }
 
 // FileConfig содержит настройки, загружаемые из JSON-файла конфигурации.
@@ -48,6 +54,8 @@ type FileConfig struct {
 	EnableHTTPS     *bool   `json:"enable_https"`
 	AuditFile       *string `json:"audit_file"`
 	AuditURL        *string `json:"audit_url"`
+	TrustedSubnet   *string `json:"trusted_subnet"`
+	GRPCAddress     *string `json:"grpc_address"`
 }
 
 // LoadFileConfig читает и разбирает JSON-файл конфигурации.
@@ -78,6 +86,8 @@ type InitOptions struct {
 	AuditFile       string
 	AuditURL        string
 	EnableHTTPS     bool
+	TrustedSubnet   string
+	GRPCAddress     string
 	FileConfig      *FileConfig
 }
 
@@ -124,6 +134,8 @@ func Init(opts InitOptions) {
 	cfg.SecretKeyForJWT = strVal(cfg.SecretKeyForJWT, opts.SecretKeyForJWT, fcField(fc, func(c *FileConfig) *string { return c.SecretKeyForJWT }), "")
 	cfg.AuditFile = strVal(cfg.AuditFile, opts.AuditFile, fcField(fc, func(c *FileConfig) *string { return c.AuditFile }), "")
 	cfg.AuditURL = strVal(cfg.AuditURL, opts.AuditURL, fcField(fc, func(c *FileConfig) *string { return c.AuditURL }), "")
+	cfg.TrustedSubnet = strVal(cfg.TrustedSubnet, opts.TrustedSubnet, fcField(fc, func(c *FileConfig) *string { return c.TrustedSubnet }), "")
+	cfg.GRPCAddress = strVal(cfg.GRPCAddress, opts.GRPCAddress, fcField(fc, func(c *FileConfig) *string { return c.GRPCAddress }), "localhost:50051")
 
 	if cfg.WorkerNum == 0 {
 		cfg.WorkerNum = 5
@@ -138,16 +150,6 @@ func Init(opts InitOptions) {
 		}
 	}
 
-	AppConfig = &Config{
-		ServerAddress:   cfg.ServerAddress,
-		BaseURL:         cfg.BaseURL,
-		PathStoreURL:    cfg.PathStoreURL,
-		DatabaseDsn:     cfg.DatabaseDsn,
-		SecretKeyForJWT: cfg.SecretKeyForJWT,
-		WorkerNum:       cfg.WorkerNum,
-		AuditFile:       cfg.AuditFile,
-		AuditURL:        cfg.AuditURL,
-		EnableHTTPS:     cfg.EnableHTTPS,
 	AppConfig = cfg
 }
 

@@ -8,6 +8,7 @@
 //	GET  /{id}                  — RedirectHandler
 //	GET  /ping                  — CheckDBStatus
 //	GET  /api/user/urls         — UserURL
+//	GET  /api/internal/stats    — StatsHandler
 //	DELETE /api/user/urls       — DeleteBatchHandler
 package handler
 
@@ -18,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 
@@ -30,6 +32,40 @@ import (
 
 // Auditor рассылает события аудита наблюдателям; устанавливается в main.go.
 var Auditor *audit.Auditor
+
+// trustedCIDR хранит разобранный CIDR доверенной подсети; nil — подсеть не задана.
+var trustedCIDR *net.IPNet
+
+// InitTrustedSubnet разбирает CIDR один раз при старте.
+// Если cidr пустой — trustedCIDR остаётся nil и StatsHandler будет отдавать 403.
+func InitTrustedSubnet(cidr string) error {
+	if cidr == "" {
+		return nil
+	}
+	_, parsed, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return err
+	}
+	trustedCIDR = parsed
+	return nil
+}
+
+// TrustedSubnetMiddleware проверяет, что X-Real-IP входит в trustedCIDR.
+// Возвращает 403, если подсеть не задана или IP вне диапазона.
+func TrustedSubnetMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if trustedCIDR == nil {
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+		clientIP := net.ParseIP(r.Header.Get("X-Real-IP"))
+		if clientIP == nil || !trustedCIDR.Contains(clientIP) {
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 // ShortenHandler обрабатывает POST / с телом text/plain.
 // Принимает оригинальный URL, возвращает короткую ссылку в теле ответа.
@@ -388,4 +424,23 @@ func DeleteBatch(w http.ResponseWriter, r *http.Request, tasksDelCh chan<- schem
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// StatsHandler обрабатывает GET /api/internal/stats.
+// Доступен только через TrustedSubnetMiddleware — проверка IP уже выполнена.
+// Возвращает {"urls":<int>,"users":<int>}.
+func StatsHandler(w http.ResponseWriter, r *http.Request) {
+	urls, users, err := service.Shortener.GetStats(r.Context())
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		slog.Error("StatsHandler: GetStats failed", "error", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(struct {
+		URLs  int `json:"urls"`
+		Users int `json:"users"`
+	}{urls, users})
 }

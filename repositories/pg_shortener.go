@@ -50,6 +50,8 @@ type ShortenerRepository interface {
 	UpdateIsDelete(ctx context.Context, userID string, shortIDs []string) error
 	// DeleteByShortURL физически удаляет запись по short_url и userID.
 	DeleteByShortURL(ctx context.Context, userID string, shortURL string) error
+	// Stats возвращает общее количество сокращённых URL и уникальных пользователей.
+	Stats(ctx context.Context) (urlCount, userCount int, err error)
 }
 
 // URLPostgresRepository — реализация ShortenerRepository поверх PostgreSQL.
@@ -187,6 +189,21 @@ func (r *URLPostgresRepository) List(ctx context.Context) ([]URL, error) {
 	query := `SELECT id, url, short_url, user_id FROM urls ORDER BY id`
 	err := r.db.SelectContext(ctx, &list, query)
 	return list, err
+}
+
+func (r *URLPostgresRepository) Stats(ctx context.Context) (urlCount, userCount int, err error) {
+	tx, err := r.db.BeginTxx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback()
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM urls`).Scan(&urlCount); err != nil {
+		return 0, 0, err
+	}
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(DISTINCT user_id) FROM urls WHERE user_id != ''`).Scan(&userCount); err != nil {
+		return 0, 0, err
+	}
+	return urlCount, userCount, tx.Commit()
 }
 
 // UpdateIsDelete устанавливает флаг is_deleted для набора short_url конкретного пользователя.
